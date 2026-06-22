@@ -1,0 +1,72 @@
+{
+    "name": "@moonvy/starmap",
+    "version": "4.0.0",
+    "module": "src/index.ts",
+    "type": "module",
+    "bin": {
+        "starmap": "./dist/cli.js"
+    },
+    "scripts": {
+        "dev": "rslib build  --config ./build/rslib.config.ts --watch",
+        "build": "rslib build --config ./build/rslib.config.ts",
+        "build:bundler": "bun run build/build.bun.ts",
+        "test": "vitest",
+        "publish": "bun ./build/check-npm-user.ts && npm publish",
+        "check-git-user": "bun ./build/check-git-user.ts",
+        "try": "bun run ./src/cli.ts /Users/yarna/Project/MOONVY-FIN/products/MoonvyOne/lib/UISysOld"
+    },
+    "dependencies": {
+        "@fontsource-variable/inter": "5.2.8",
+        "@fontsource-variable/jetbrains-mono": "5.2.8",
+        "@fontsource-variable/plus-jakarta-sans": "5.2.8",
+        "@fontsource-variable/roboto-mono": "5.2.8",
+        "@fontsource/dm-serif-display": "5.2.8",
+        "@fontsource/fusion-pixel-12px-monospaced-sc": "5.2.5",
+        "@haoduo-icon/fluent": "1.0.3",
+        "@haoduo-icon/material-symbols": "1.0.3",
+        "@haoduo-icon/ri": "link:@haoduo-icon/ri",
+        "@parcel/watcher": "2.5.1",
+        "@shikijs/transformers": "4.1.0",
+        "@types/fs-extra": "11.0.4",
+        "@types/markdown-it": "14.1.2",
+        "@types/mustache": "4.2.6",
+        "@vitejs/plugin-vue": "6.0.5",
+        "c12": "3.3.3",
+        "cac": "6.7.14",
+        "es-module-lexer": "2.0.0",
+        "es-toolkit": "1.44.0",
+        "fs-extra": "11.3.3",
+        "fzz": "link:fzz",
+        "gray-matter": "4.0.3",
+        "local-glob": "1.0.2",
+        "markdown-it-anchor": "9.2.0",
+        "markdown-it-async": "2.2.0",
+        "markdown-it-cjk-friendly": "2.0.2",
+        "markdown-it-github-alerts": "1.0.1",
+        "micromatch": "4.0.8",
+        "mustache": "4.2.0",
+        "vite": "8.0.0",
+        "vue": "3.5.27",
+        "vue-docgen-api": "4.79.2",
+        "vue-router": "5.0.3"
+    },
+    "devDependencies": {
+        "@rslib/core": "0.19.5",
+        "@types/bun": "latest",
+        "@types/markdown-it-anchor": "7.0.0",
+        "@types/micromatch": "4.0.10",
+        "@types/node": "24.10.11",
+        "chalk": "5.6.2",
+        "prettier": "3.8.3",
+        "shiki": "4.0.2",
+        "tinybench": "6.0.0",
+        "vitest": "4.1.0"
+    },
+    "peerDependencies": {
+        "typescript": "5.9.3"
+    },
+    "publishConfig": {
+        "registry": "https://registry.npmjs.org/"
+    },
+    "license": "ISC"
+}

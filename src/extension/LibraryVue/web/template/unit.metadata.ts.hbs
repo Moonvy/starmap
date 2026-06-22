@@ -1,0 +1,26 @@
+// @ts-ignore
+import codeUnit from "./code-unit.json" with { type: "json" }
+{{#mainComponentFsNode}}
+// @ts-ignore
+import vueMetadata from "./vue-metadata.json" with { type: "json" }
+{{/mainComponentFsNode}}
+// @ts-ignore
+import unitsFlat from "../../units-flat.json" with { type: "json" }
+// @ts-ignore
+import unitsTree from "../../units-tree.json" with { type: "json" }
+// @ts-ignore
+import rootMetadata from "../../root-metadata.json" with { type: "json" }
+
+
+
+const metadata = {
+    codeUnit,
+    {{#mainComponentFsNode}}
+    vueMetadata,
+    {{/mainComponentFsNode}}
+    unitsFlat,
+    unitsTree,
+    rootMetadata
+}
+
+export default metadata

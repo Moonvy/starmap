@@ -1,0 +1,56 @@
+:root {
+    padding: 0;
+}
+
+body {
+    display: block;
+    margin: 0;
+    font-size: 14px;
+}
+
+:root {
+    --starmap-nav-item-text: #585877;
+    --starmap-nav-item-text-selected: #3f48b3;
+    --starmap-nav-item-bk-selected: #d9dfff;
+    --starmap-button-icon-text: #40408d;
+
+    --starmap-nav-background: #fafbfd;
+    --starmap-nav-shadow: 0px 0 0 1px #415d930a, -2px 0 4px #00226705;
+
+    --starmap-nav-scroll-thumb-bk: #b3bbcc99;
+    --starmap-nav-scroll-thumb-bk-hover: #8a93a8ba;
+
+    --starmap-nav-logo: #2d2d72;
+
+    --starmap-doc-background: #fff;
+
+    --starmap-base-font: "Plus Jakarta Sans", sans-serif, "SF Pro Text";
+    --starmap-content-font: "Inter", sans-serif, "SF Pro Text";
+    --starmap-head-font: "Plus Jakarta Sans", sans-serif, "SF Pro Text";
+    --starmap-code-font: "Roboto Mono", monospace, "SF Pro Text";
+
+    --starmap-control-bk: rgb(235 238 245);
+    --starmap-code-bk: rgb(232 236 244);
+    --starmap-code-text-color: rgb(7 38 96);
+
+    &.is-dark-theme {
+        --starmap-nav-item-text: #adb5cf;
+        --starmap-nav-item-text-selected: #b8c1ff;
+        --starmap-nav-item-bk-selected: #2d3368;
+        --starmap-button-icon-text: #a1a1db;
+
+        --starmap-nav-background: #151522;
+        --starmap-nav-shadow: 0px 0 0 1px #0000001a, -2px 0 4px #0000001a;
+
+        --starmap-nav-scroll-thumb-bk: #4a5166b3;
+        --starmap-nav-scroll-thumb-bk-hover: #5e6680cc;
+
+        --starmap-doc-background: #191927;
+
+        --starmap-nav-logo: #d5d5f2;
+
+        --starmap-control-bk: rgb(40 44 60);
+        --starmap-code-bk: rgb(32 36 54);
+        --starmap-code-text-color: rgb(165 185 230);
+    }
+}

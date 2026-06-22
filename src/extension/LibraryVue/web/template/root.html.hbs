@@ -1,0 +1,21 @@
+<html lang="zh-cn">
+    <head>
+        <meta charset="UTF-8" />
+        <link rel="icon" href="./assets/starmap-icon-256.png" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Starmap</title>
+        <style>
+            {{{BaseStyle}}}
+        </style>
+    </head>
+    <body>
+        <div id="startmap-app-root">
+            <div class="loadding">
+                <img class="loading-logo" src="./assets/starmap-logo-word-512.png" width="128px" />
+            </div>
+        </div>
+        <script type="module" src="./metadata.ts"></script>
+        <script type="module" src="./router.ts"></script>
+        <script type="module" src="{{{StarmapAppTsPath}}}"></script>
+    </body>
+</html>

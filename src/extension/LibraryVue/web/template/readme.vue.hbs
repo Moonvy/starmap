@@ -1,0 +1,28 @@
+<template>
+    <StarmapMarkdownWrap> {{{readmeHtml}}} </StarmapMarkdownWrap>
+</template>
+<script>
+import { defineComponent } from "vue"
+import { MarkdownComponents } from "{{{MarkdownComponentsPath}}}"
+{{#imports}}
+import {{name}} from "{{{path}}}"
+{{/imports}}
+
+export default defineComponent({
+    name: "StarmapReadmeWrap",
+    inject: ["codeUnit"],
+    components: {
+        ...MarkdownComponents,
+        {{#imports}}
+        {{name}},
+        {{/imports}}
+    },
+    data() {
+        return {
+            {{#vModelVariablesList}}
+            {{name}}: {{{defaultValue}}},
+            {{/vModelVariablesList}}
+        }
+    },
+})
+</script>

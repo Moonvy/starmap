@@ -1,0 +1,6 @@
+import "@fontsource-variable/plus-jakarta-sans"
+import "@fontsource-variable/inter"
+import "@fontsource-variable/jetbrains-mono"
+import "@fontsource-variable/roboto-mono"
+import "@fontsource/fusion-pixel-12px-monospaced-sc"
+import "@fontsource/dm-serif-display"
