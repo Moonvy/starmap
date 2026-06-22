@@ -1,7 +1,7 @@
 {
     "name": "@moonvy/starmap",
-    "version": "4.0.0",
-    "module": "src/index.ts",
+    "version": "4.0.1",
+    "module": "dist/index.js",
     "type": "module",
     "bin": {
         "starmap": "./dist/cli.js"
