@@ -23,6 +23,7 @@
         "@fontsource/dm-serif-display": "5.2.8",
         "@fontsource/fusion-pixel-12px-monospaced-sc": "5.2.5",
         "@haoduo-icon/fluent": "1.0.3",
+        "@haoduo-icon/lucide": "1.0.3",
         "@haoduo-icon/material-symbols": "1.0.3",
         "@haoduo-icon/ri": "link:@haoduo-icon/ri",
         "@parcel/watcher": "2.5.1",
