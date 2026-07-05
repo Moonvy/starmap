@@ -119,17 +119,17 @@ export interface StarmapCoreCtx {}
  * 初始化配置
  */
 async function initConfig(inputConfig: IStarmapConfig) {
-    const { loadConfig } = await import("c12")
+    const { loadConfig } = await import("./lib/loadConfig")
 
     let cwdPath = path.join(inputConfig.rootPath ?? inputConfig.srcDir ?? cwd(), "config")
-    const { config, layers, configFile } = await loadConfig({
+    const { config, configFile } = await loadConfig({
         cwd: cwdPath,
         name: "starmap",
         overrides: inputConfig,
         defaults: <any>{ _v1: 0 },
     })
 
-    // console.log({ configFile, inputConfig, layers, config })
+    // console.log(">> c12:", { configFile, layers, config })
     if (configFile) {
         console.log(...fmt("<Starmap|configFile>", configFile))
     }
@@ -153,7 +153,7 @@ async function initConfig(inputConfig: IStarmapConfig) {
         fsex.ensureDirSync(config.outputDir)
     }
 
-    // console.log(...fmt("<Starmap|init> config:", { config }))
+    // console.log(...fmt("<Starmap|init> config 2:", { config }))
 
     return config
 }

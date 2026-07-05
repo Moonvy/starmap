@@ -11,8 +11,9 @@
     --md-head-color: rgb(17, 24, 39);
     --md-link-color: rgb(80 69 222);
 
-    --md-blockquote-text-color: rgb(62 125 104);
-    --md-blockquote-border-color: #dae4da;
+    --md-blockquote-text-color: rgb(62 74 70);
+    --md-blockquote-border-color: #cad2ca;
+    --md-blockquote-bk-color: #f6f9f6;
     --md-blockquote-head-color: #0b534b;
 
     --md-table-border-color: #e3e8f1;
@@ -107,7 +108,7 @@
 
     p {
         line-height: 2;
-        margin: 1.5em 0;
+        margin: 1em 0;
     }
 
     .starmap-import-doc-comment {
@@ -154,12 +155,12 @@
 
     ol li {
         line-height: 2;
-        margin: 0.5em 0;
+        margin: 0.1em 0;
     }
 
     ul li {
         line-height: 2;
-        margin: 0.5em 0;
+        margin: 0.1em 0;
     }
 
     /* 完美融合列表项中可能包含的段落标签 */
@@ -323,12 +324,13 @@
         margin: 0;
         margin-top: 1em;
         margin-left: 0.25em;
-        padding: 0;
+        padding: 0.1em;
         padding-left: 1em;
         font-size: 0.875em;
-        border-radius: 8px;
-        border: 1px solid var(--md-blockquote-border-color);
+        border-radius: 0 8px 8px 0;
+        border: none;
         border-left: 4px solid var(--md-blockquote-border-color);
+        background-color: var(--md-blockquote-bk-color);
 
         p {
             margin: 0.725em 0;
@@ -447,7 +449,7 @@
     border-radius: 12px;
     overflow: hidden;
     box-sizing: border-box;
-    max-height: 520px;
+    max-height: 512px;
 
     &.is-expanded {
         max-height: none;
@@ -608,6 +610,7 @@
 
     --md-blockquote-text-color: rgb(82 172 145);
     --md-blockquote-border-color: #1c3930;
+    --md-blockquote-bk-color: rgba(28, 57, 48, 0.25);
     --md-blockquote-head-color: #55c2b0;
 
     --md-table-border-color: #222940;
