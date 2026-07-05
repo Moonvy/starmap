@@ -17,10 +17,10 @@
     /* 屏幕小于 1400px */
     @media (max-width: 1400px) {
         .Starmap-Markdown-Wrap {
-            width: 560px;
+            width: 620px;
         }
         .Starmap-Markdown-Wrap.is-toc-pinned {
-            width: 840px; /* 560px + 280px */
+            width: 900px; /* 620px + 280px */
             max-width: 100%;
         }
     }
@@ -28,10 +28,10 @@
     /* 屏幕小于 1100px */
     @media (max-width: 1100px) {
         .Starmap-Markdown-Wrap {
-            width: 480px;
+            width: 620px;
         }
         .Starmap-Markdown-Wrap.is-toc-pinned {
-            width: 760px; /* 480px + 280px */
+            width: 900px; /* 620px + 280px */
             max-width: 100%;
         }
     }
