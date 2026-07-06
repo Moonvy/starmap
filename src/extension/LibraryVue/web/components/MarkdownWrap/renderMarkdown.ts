@@ -7,6 +7,7 @@ import { dirname, resolve, isAbsolute } from "path"
 import { markdownCodeHighlight } from "./lib/markdownItCodeHighlight"
 import { markdownCodeImportResolve } from "./lib/markdownImportResolve"
 import { markdownItImage } from "./lib/markdownItImage"
+import type { CodeUnit } from "../../../../core/Gen/CodeUnit"
 
 const anchorFunc = (anchor as any).default || anchor
 const permalink = (anchorFunc as any).permalink || (anchor as any).permalink
@@ -170,6 +171,8 @@ export async function renderMarkdown(
         filePath?: string
         // 是否移除第一个 h1 标签
         removeFirstH1?: boolean
+        // 所有代码单元，用于处理本地 markdown 链接的跳转
+        codeUnits?: CodeUnit[]
     },
 ): Promise<{ html: string; imports?: { name: string; path: string }[]; dependencies?: string[] }> {
     // 代码导入解析 resolve
@@ -194,6 +197,12 @@ export async function renderMarkdown(
     // 处理 markdown 文件中的图片、视频等资源路径，转换为绝对路径
     if (options?.filePath) {
         html = resolveHtmlMediaPaths(html, options.filePath)
+
+        // 处理本地 markdown 链接的重定向
+        const codeUnits = options.codeUnits || (typeof window !== "undefined" ? (window as any).__starmap__?.unitsFlat : undefined)
+        if (codeUnits && codeUnits.length > 0) {
+            html = resolveHtmlLocalLinks(html, options.filePath, codeUnits)
+        }
     }
 
     return { html, imports, dependencies }
@@ -243,6 +252,68 @@ export function resolveHtmlMediaPaths(html: string, filePath: string) {
         return match
             .replace(`poster="${poster}"`, `poster="${absPath}"`)
             .replace(`poster='${poster}'`, `poster='${absPath}'`)
+    })
+
+    return resultHtml
+}
+
+/**
+ * 处理 HTML 文本，将指向本地 markdown 文件的链接转换为 SPA 路由地址
+ */
+export function resolveHtmlLocalLinks(html: string, filePath: string, codeUnits: any[]): string {
+    const dir = dirname(filePath)
+
+    // 获取项目根目录，如果获取不到则使用 dir 作为退路
+    const sampleUnit = codeUnits[0]
+    const rootPath = sampleUnit?.gen?.starmapCore?.config?.rootPath || dir
+
+    let resultHtml = html
+
+    // 匹配 a 标签中的 href 属性
+    resultHtml = resultHtml.replace(/<a([^>]+)href=["']([^"']+)["']([^>]*)>/gi, (match, before, href, after) => {
+        // 如果是外部链接，或者纯锚点，则不处理
+        if (
+            href.startsWith("http://") ||
+            href.startsWith("https://") ||
+            href.startsWith("mailto:") ||
+            href.startsWith("tel:") ||
+            href.startsWith("#")
+        ) {
+            return match
+        }
+
+        // 解析出路径 and 可选的 hash 锚点
+        const hashIndex = href.indexOf("#")
+        const pathPart = hashIndex !== -1 ? href.slice(0, hashIndex) : href
+        const hashPart = hashIndex !== -1 ? href.slice(hashIndex) : ""
+
+        // 判断是否是 markdown 链接，例如扩展名是 .md 或 .markdown
+        const ext = pathPart.split(".").pop()?.toLowerCase() || ""
+        if (ext !== "md" && ext !== "markdown") {
+            return match
+        }
+
+        // 尝试两种解析路径：
+        // 1. 相对于当前 markdown 文件的目录
+        const targetAbsPath1 = resolve(dir, pathPart)
+        // 2. 相对于项目根目录（去除开头的 ./）
+        const cleanPath = pathPart.startsWith("./") ? pathPart.slice(2) : pathPart
+        const targetAbsPath2 = resolve(rootPath, cleanPath)
+
+        // 在 codeUnits 列表中查找匹配的单元
+        const matchedUnit = codeUnits.find((unit) => {
+            if (!unit.readmeFullPath) return false
+            const unitAbs = resolve(unit.readmeFullPath)
+            return unitAbs === targetAbsPath1 || unitAbs === targetAbsPath2
+        })
+
+        if (matchedUnit) {
+            // 转义为 vue-router hash 路由形式，例如：#/units/array#options
+            const newHref = `#/units/${matchedUnit.id}${hashPart}`
+            return `<a${before}href="${newHref}"${after}>`
+        }
+
+        return match
     })
 
     return resultHtml

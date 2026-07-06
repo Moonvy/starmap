@@ -107,3 +107,27 @@ test("renderMarkdown 自定义标题 ID", async () => {
     expect(html).toContain('<h5 id="detail" tabindex="-1"><a class="header-anchor" href="#detail" aria-hidden="true">#</a> Deep detail</h5>')
     expect(html).toContain('<h2 id="styled-anchor" tabindex="-1"><a class="header-anchor" href="#styled-anchor" aria-hidden="true">#</a> <em>Styled Section</em></h2>')
 })
+
+test("renderMarkdown 本地 markdown 链接重定向", async () => {
+    const md = `[array](./src/array/readme.md) and [array option](./src/array/readme.md#options) and [external](https://google.com)`
+    const filePath = "/Users/test/project/src/math/readme.md"
+    const codeUnits = [
+        {
+            id: "array",
+            readmeFullPath: "/Users/test/project/src/array/readme.md",
+            gen: {
+                starmapCore: {
+                    config: {
+                        rootPath: "/Users/test/project",
+                    },
+                },
+            },
+        },
+    ]
+
+    const { html } = await renderMarkdown(md, { filePath, codeUnits: codeUnits as any })
+
+    expect(html).toContain('href="#/units/array"')
+    expect(html).toContain('href="#/units/array#options"')
+    expect(html).toContain('href="https://google.com"')
+})

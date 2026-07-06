@@ -1,5 +1,7 @@
 import * as ts from "typescript"
 import MarkdownIt from "markdown-it"
+import * as fs from "node:fs"
+import * as path from "node:path"
 
 const inlineMarkdown = new MarkdownIt({
     html: false,
@@ -17,6 +19,12 @@ interface SymbolMatch {
     docNode: ts.Node
     /** 用于分析参数的声明节点 */
     declaration: ts.Node
+    /** 匹配该节点时对应的 ts.SourceFile */
+    sourceFile: ts.SourceFile
+    /** 匹配该节点时对应的物理源码内容 */
+    code: string
+    /** 匹配该节点时对应的文件绝对路径 */
+    filePath?: string
 }
 
 interface ParamDoc {
@@ -67,19 +75,19 @@ export function renderImportDoc(code: string, symbolName: string, options: Impor
         ts.ScriptTarget.Latest,
         true,
     )
-    const match = findSymbolMatch(sourceFile, symbolName)
+    const match = findSymbolMatch(sourceFile, symbolName, code, options.filePath)
 
     if (!match) {
         return `> [!WARNING] Doc Import Warning\n> Symbol \`${symbolName}\` not found.`
     }
 
-    const docs = getDocParts(match.docNode, sourceFile, code, options.ignoreFirstLine ?? false)
+    const docs = getDocParts(match.docNode, match.sourceFile, match.code, options.ignoreFirstLine ?? false)
     const context: ParseContext = {
-        sourceFile,
-        code,
+        sourceFile: match.sourceFile,
+        code: match.code,
         paramComments: docs.paramComments,
         returnComment: docs.returnComment,
-        typeIndex: createTypeIndex(sourceFile),
+        typeIndex: createTypeIndex(match.sourceFile),
     }
     const params = getParamDocs(match.declaration, context)
     const returnDoc = getReturnDoc(match.declaration, context)
@@ -140,31 +148,80 @@ function renderMainComment(description: string): string {
  * @param sourceFile TypeScript 源码 AST
  * @param symbolName 要查找的 symbol 名称
  */
-function findSymbolMatch(sourceFile: ts.SourceFile, symbolName: string): SymbolMatch | null {
+function findSymbolMatch(
+    sourceFile: ts.SourceFile,
+    symbolName: string,
+    code: string,
+    filePath?: string,
+): SymbolMatch | null {
     let found: SymbolMatch | null = null
+    let reExportInfo: { originalName: string; modulePath: string } | null = null
 
     const visit = (node: ts.Node) => {
-        if (found) {
+        if (found || reExportInfo) {
             return
         }
 
         if (ts.isVariableStatement(node)) {
             for (const declaration of node.declarationList.declarations) {
                 if (ts.isIdentifier(declaration.name) && declaration.name.text === symbolName) {
-                    found = { docNode: node, declaration }
+                    found = { docNode: node, declaration, sourceFile, code, filePath }
                     return
                 }
             }
         } else if (isNamedDeclaration(node, symbolName)) {
-            found = { docNode: node, declaration: node }
+            found = { docNode: node, declaration: node, sourceFile, code, filePath }
             return
+        } else if (ts.isExportDeclaration(node)) {
+            // 解析 export { ps4 } from "./ps4"
+            if (
+                node.exportClause &&
+                ts.isNamedExports(node.exportClause) &&
+                node.moduleSpecifier &&
+                ts.isStringLiteral(node.moduleSpecifier)
+            ) {
+                for (const element of node.exportClause.elements) {
+                    if (element.name.text === symbolName) {
+                        reExportInfo = {
+                            originalName: element.propertyName ? element.propertyName.text : symbolName,
+                            modulePath: node.moduleSpecifier.text,
+                        }
+                        return
+                    }
+                }
+            }
         }
 
         ts.forEachChild(node, visit)
     }
 
     visit(sourceFile)
-    return found
+
+    if (found) {
+        return found
+    }
+
+    if (reExportInfo && filePath) {
+        const dir = path.dirname(filePath)
+        const targetFilePath = resolveModuleFilePath(dir, reExportInfo.modulePath)
+        if (targetFilePath) {
+            try {
+                const targetCode = fs.readFileSync(targetFilePath, "utf-8")
+                const targetSourceFile = ts.createSourceFile(
+                    targetFilePath,
+                    targetCode,
+                    ts.ScriptTarget.Latest,
+                    true,
+                )
+                // 递归查找，注意要找的 symbol 名字在目标文件中可能是 originalName
+                return findSymbolMatch(targetSourceFile, reExportInfo.originalName, targetCode, targetFilePath)
+            } catch (err) {
+                console.warn(`[Starmap] 读取重导出文件失败: ${targetFilePath}`, err)
+            }
+        }
+    }
+
+    return null
 }
 
 /** 判断节点是否是目标命名声明
@@ -747,4 +804,32 @@ function renderParamsComponent(params: ParamDoc[], returnDoc: ReturnDoc | null):
  */
 function escapeHtmlAttribute(value: string): string {
     return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+/**
+ * 在物理文件系统中定位重导出模块的文件路径
+ */
+function resolveModuleFilePath(dir: string, modulePath: string): string | null {
+    const extensions = [".ts", ".tsx", ".d.ts", ".js", ".jsx"]
+    const directPath = path.resolve(dir, modulePath)
+
+    if (fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
+        return directPath
+    }
+
+    for (const ext of extensions) {
+        const fullPath = directPath + ext
+        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+            return fullPath
+        }
+    }
+
+    for (const ext of extensions) {
+        const indexPath = path.join(directPath, "index" + ext)
+        if (fs.existsSync(indexPath) && fs.statSync(indexPath).isFile()) {
+            return indexPath
+        }
+    }
+
+    return null
 }

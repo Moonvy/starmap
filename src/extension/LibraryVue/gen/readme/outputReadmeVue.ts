@@ -61,6 +61,7 @@ export async function outputReadmeVue(codeUnit: CodeUnit, outputPath: string) {
     } = await renderMarkdown(readmeMarkdown.content, {
         filePath: codeUnit.readmeFsNode.fileFullPath,
         removeFirstH1: true,
+        codeUnits: codeUnit.gen?.allUnits?.flat,
     })
     codeUnit.readmeImportDependencyPaths = dependencies || []
 

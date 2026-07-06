@@ -1,4 +1,6 @@
 import { renderImportDoc } from "../markdownImportDoc"
+import * as fs from "node:fs"
+import * as path from "node:path"
 
 function getParamsJson(result: string): any[] {
     const match = result.match(/<StarmapDocParams params-json="([^"]+)"/)
@@ -427,4 +429,47 @@ test("未找到 symbol 时生成警告", () => {
 
     expect(result).toContain("Doc Import Warning")
     expect(result).toContain("missing")
+})
+
+test("支持定位重导出（re-export）的源文件注释", () => {
+    const tempDir = path.resolve(__dirname, "./temp-reexport-test")
+    if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true })
+    }
+
+    const sourceFile = path.join(tempDir, "ps4.ts")
+    const entryFile = path.join(tempDir, "index.ts")
+
+    // 源文件：定义真正的 Symbol 及其 JSDoc 注释
+    fs.writeFileSync(sourceFile, [
+        "/**",
+        " * ps4",
+        " * 这是真正的 PS4 核心模块说明。",
+        " * @param version 版本号",
+        " */",
+        "export function ps4(version: string) {",
+        "    return version",
+        "}"
+    ].join("\n"))
+
+    // 入口文件：只进行重导出
+    fs.writeFileSync(entryFile, 'export { ps4 } from "./ps4"')
+
+    try {
+        const result = renderImportDoc('export { ps4 } from "./ps4"', "ps4", {
+            filePath: entryFile,
+            ignoreFirstLine: true,
+        })
+
+        expect(result).toContain("这是真正的 PS4 核心模块说明。")
+        expect(result).not.toContain("ps4")
+        expect(result).toContain("<StarmapDocParams")
+        expect(getParamsJson(result)).toMatchObject([
+            { name: "version", type: "string", description: "版本号" }
+        ])
+    } finally {
+        if (fs.existsSync(sourceFile)) fs.unlinkSync(sourceFile)
+        if (fs.existsSync(entryFile)) fs.unlinkSync(entryFile)
+        if (fs.existsSync(tempDir)) fs.rmdirSync(tempDir)
+    }
 })
