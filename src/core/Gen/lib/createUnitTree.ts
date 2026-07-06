@@ -41,5 +41,14 @@ export function createUnitTree(flatUnits: CodeUnit[]): CodeUnit[] {
         }
     }
 
+    // 将 starmap-project-root 置顶
+    roots.sort((a, b) => {
+        const aIsRoot = a.id === "starmap-project-root" || a.id === "startmap-project-root"
+        const bIsRoot = b.id === "starmap-project-root" || b.id === "startmap-project-root"
+        if (aIsRoot && !bIsRoot) return -1
+        if (!aIsRoot && bIsRoot) return 1
+        return 0
+    })
+
     return roots
 }

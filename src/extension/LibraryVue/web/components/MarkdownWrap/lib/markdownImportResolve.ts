@@ -81,12 +81,22 @@ export async function markdownImportResolve(
 
             let fileContent = await fs.readFile(absolutePath, "utf-8")
             let ext = path.extname(absolutePath).toLowerCase()
-            const docSymbolName = getImportArgValue(args, "doc")
+            let docSymbolName = getImportArgValue(args, "doc")
+            let ignoreFirstLine = false
+            if (!docSymbolName) {
+                docSymbolName = getImportArgValue(args, "doc.notitle")
+                if (docSymbolName) {
+                    ignoreFirstLine = true
+                }
+            }
 
             if (docSymbolName) {
                 // 只有命中 @doc 时才加载 AST 文档解析逻辑，避免普通导入产生额外开销
                 const { renderImportDoc } = await import("./markdownImportDoc")
-                resolvedContent = renderImportDoc(fileContent, docSymbolName, { filePath: absolutePath })
+                resolvedContent = renderImportDoc(fileContent, docSymbolName, {
+                    filePath: absolutePath,
+                    ignoreFirstLine,
+                })
             } else if (ext === ".md") {
                 // 递归解析 Markdown 片段（不加入 imports，内容直接内联）
                 const subResult = await markdownImportResolve(fileContent, { filePath: absolutePath })

@@ -8,6 +8,8 @@ const inlineMarkdown = new MarkdownIt({
 interface ImportDocOptions {
     /** 当前解析的代码文件路径，用于 TypeScript SourceFile 命名 */
     filePath?: string
+    /** 是否忽略注释的第一行 */
+    ignoreFirstLine?: boolean
 }
 
 interface SymbolMatch {
@@ -71,7 +73,7 @@ export function renderImportDoc(code: string, symbolName: string, options: Impor
         return `> [!WARNING] Doc Import Warning\n> Symbol \`${symbolName}\` not found.`
     }
 
-    const docs = getDocParts(match.docNode, sourceFile, code)
+    const docs = getDocParts(match.docNode, sourceFile, code, options.ignoreFirstLine ?? false)
     const context: ParseContext = {
         sourceFile,
         code,
@@ -198,6 +200,7 @@ function getDocParts(
     node: ts.Node,
     sourceFile: ts.SourceFile,
     code: string,
+    ignoreFirstLine: boolean,
 ): { description: string; paramComments: Map<string, string>; returnComment: string } {
     const jsDocs = getJsDocs(node)
     const paramComments = new Map<string, string>()
@@ -207,7 +210,7 @@ function getDocParts(
         const description = jsDocs
             .map((doc) =>
                 cleanLeadingComment(code.slice(doc.pos, doc.end), {
-                    ignoreFirstLine: true,
+                    ignoreFirstLine: ignoreFirstLine,
                     stopAtTags: true,
                 }),
             )
@@ -231,7 +234,7 @@ function getDocParts(
 
     return {
         description: getLeadingComments(code, node.getFullStart(), {
-            ignoreFirstLine: true,
+            ignoreFirstLine: ignoreFirstLine,
             stopAtTags: false,
         })
             .filter(Boolean)

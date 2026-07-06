@@ -39,7 +39,10 @@ test("从函数 JSDoc 生成文档和参数表格", () => {
         "}",
     ].join("\n")
 
-    const result = renderImportDoc(source, "createUser")
+    const resultDefault = renderImportDoc(source, "createUser")
+    expect(resultDefault).toContain("createUser")
+
+    const result = renderImportDoc(source, "createUser", { ignoreFirstLine: true })
 
     expect(result).toContain('<div class="starmap-import-doc-comment">')
     expect(result).toContain("创建用户资料。")
@@ -135,7 +138,10 @@ test("从 class 注释生成文档", () => {
         "}",
     ].join("\n")
 
-    const result = renderImportDoc(source, "StarmapRunner")
+    const resultDefault = renderImportDoc(source, "StarmapRunner")
+    expect(resultDefault).toContain("StarmapRunner")
+
+    const result = renderImportDoc(source, "StarmapRunner", { ignoreFirstLine: true })
 
     expect(result).toBe(
         '<div class="starmap-import-doc-comment"><div class="starmap-import-doc-comment-line">管理星图生成流程。</div></div>',
@@ -155,7 +161,7 @@ test("主注释忽略首行并保留原始换行", () => {
         "}",
     ].join("\n")
 
-    const result = renderImportDoc(source, "StarmapRunner")
+    const result = renderImportDoc(source, "StarmapRunner", { ignoreFirstLine: true })
 
     expect(result).toBe(
         '<div class="starmap-import-doc-comment"><div class="starmap-import-doc-comment-line">第一段说明。</div><div class="starmap-import-doc-comment-line is-empty"></div><div class="starmap-import-doc-comment-line">第二段说明。</div></div>',
@@ -173,7 +179,7 @@ test("支持 JSDoc 起始行直接写主标题", () => {
         "export function createNode() {}",
     ].join("\n")
 
-    const result = renderImportDoc(source, "createNode")
+    const result = renderImportDoc(source, "createNode", { ignoreFirstLine: true })
 
     expect(result).toContain(
         '<div class="starmap-import-doc-comment-line">在指定的父节点下批量创建新节点。</div><div class="starmap-import-doc-comment-line">所有创建的节点都将自动归属到指定的 parentId 下。</div>',
@@ -209,7 +215,7 @@ test("从 JSDoc 原始范围解析装饰器声明的主注释", () => {
         "}",
     ].join("\n")
 
-    const result = renderImportDoc(source, "StarmapRunner")
+    const result = renderImportDoc(source, "StarmapRunner", { ignoreFirstLine: true })
 
     expect(result).toBe(
         '<div class="starmap-import-doc-comment"><div class="starmap-import-doc-comment-line">装饰器声明正文。</div></div>',
@@ -227,7 +233,7 @@ test("普通行注释也忽略首行并保留换行", () => {
         "}",
     ].join("\n")
 
-    const result = renderImportDoc(source, "StarmapRunner")
+    const result = renderImportDoc(source, "StarmapRunner", { ignoreFirstLine: true })
 
     expect(result).toBe(
         '<div class="starmap-import-doc-comment"><div class="starmap-import-doc-comment-line">第一段说明。</div><div class="starmap-import-doc-comment-line is-empty"></div><div class="starmap-import-doc-comment-line">第二段说明。</div></div>',

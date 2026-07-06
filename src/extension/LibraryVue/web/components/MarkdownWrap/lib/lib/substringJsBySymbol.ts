@@ -90,10 +90,16 @@ function extractDefinition(source: string, startIndex: number): string {
 			parenthesisDepth += 1
 		} else if (char === ")") {
 			parenthesisDepth = Math.max(0, parenthesisDepth - 1)
+			if (sawBrace && braceDepth === 0 && parenthesisDepth === 0 && bracketDepth === 0) {
+				return sliceWithTrailingSemicolon(source, startIndex, index + 1)
+			}
 		} else if (char === "[") {
 			bracketDepth += 1
 		} else if (char === "]") {
 			bracketDepth = Math.max(0, bracketDepth - 1)
+			if (sawBrace && braceDepth === 0 && parenthesisDepth === 0 && bracketDepth === 0) {
+				return sliceWithTrailingSemicolon(source, startIndex, index + 1)
+			}
 		} else if (char === "{") {
 			braceDepth += 1
 			sawBrace = true

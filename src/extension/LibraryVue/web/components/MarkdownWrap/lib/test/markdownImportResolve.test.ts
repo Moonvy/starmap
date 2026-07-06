@@ -87,7 +87,7 @@ describe("markdownImportResolve", () => {
         expect(imports?.length).toBe(1)
     })
 
-    test("解析带 @doc 时生成 symbol 文档", async () => {
+    test("解析带 @doc 时生成 symbol 文档 (默认保留第一行)", async () => {
         vi.mocked(fs.readFile).mockResolvedValueOnce(
             [
                 "/**",
@@ -110,6 +110,39 @@ describe("markdownImportResolve", () => {
             filePath: mockFilePath,
         })
 
+        expect(result).toContain("createUser")
+        expect(result).toContain("创建用户资料。")
+        expect(result).toContain("<StarmapDocParams")
+        expect(result).toContain("UserInput&lt;br&gt;AuditFields")
+        expect(result).not.toContain("```ts")
+        expect(imports?.length).toBe(0)
+        expect(dependencies).toEqual([path.resolve("/mock/path/to", "demo.ts")])
+    })
+
+    test("解析带 @doc.notitle 时生成 symbol 文档并忽略第一行", async () => {
+        vi.mocked(fs.readFile).mockResolvedValueOnce(
+            [
+                "/**",
+                " * createUser",
+                " * 创建用户资料。",
+                " * @param input 用户输入",
+                " */",
+                "export function createUser(input: UserInput & AuditFields) {",
+                "    return input",
+                "}",
+            ].join("\n"),
+        )
+
+        const markdown = `@import "demo.ts" @doc.notitle=createUser`
+        const {
+            markdown: result,
+            imports,
+            dependencies,
+        } = await markdownImportResolve(markdown, {
+            filePath: mockFilePath,
+        })
+
+        expect(result).not.toContain("createUser")
         expect(result).toContain("创建用户资料。")
         expect(result).toContain("<StarmapDocParams")
         expect(result).toContain("UserInput&lt;br&gt;AuditFields")
