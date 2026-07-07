@@ -162,23 +162,25 @@ function findSymbolMatch(
     code: string,
     filePath?: string,
 ): SymbolMatch | null {
-    let found: SymbolMatch | null = null
-    let reExportInfo: { originalName: string; modulePath: string } | null = null
+    const state = {
+        found: null as SymbolMatch | null,
+        reExportInfo: null as { originalName: string; modulePath: string } | null,
+    }
 
     const visit = (node: ts.Node) => {
-        if (found || reExportInfo) {
+        if (state.found || state.reExportInfo) {
             return
         }
 
         if (ts.isVariableStatement(node)) {
             for (const declaration of node.declarationList.declarations) {
                 if (ts.isIdentifier(declaration.name) && declaration.name.text === symbolName) {
-                    found = { docNode: node, declaration, sourceFile, code, filePath }
+                    state.found = { docNode: node, declaration, sourceFile, code, filePath }
                     return
                 }
             }
         } else if (isNamedDeclaration(node, symbolName)) {
-            found = { docNode: node, declaration: node, sourceFile, code, filePath }
+            state.found = { docNode: node, declaration: node, sourceFile, code, filePath }
             return
         } else if (ts.isExportDeclaration(node)) {
             // 解析 export { ps4 } from "./ps4"
@@ -190,7 +192,7 @@ function findSymbolMatch(
             ) {
                 for (const element of node.exportClause.elements) {
                     if (element.name.text === symbolName) {
-                        reExportInfo = {
+                        state.reExportInfo = {
                             originalName: element.propertyName ? element.propertyName.text : symbolName,
                             modulePath: node.moduleSpecifier.text,
                         }
@@ -205,13 +207,13 @@ function findSymbolMatch(
 
     visit(sourceFile)
 
-    if (found) {
-        return found
+    if (state.found) {
+        return state.found
     }
 
-    if (reExportInfo && filePath) {
+    if (state.reExportInfo && filePath) {
         const dir = path.dirname(filePath)
-        const targetFilePath = resolveModuleFilePath(dir, reExportInfo.modulePath)
+        const targetFilePath = resolveModuleFilePath(dir, state.reExportInfo.modulePath)
         if (targetFilePath) {
             try {
                 const targetCode = fs.readFileSync(targetFilePath, "utf-8")
@@ -222,7 +224,7 @@ function findSymbolMatch(
                     true,
                 )
                 // 递归查找，注意要找的 symbol 名字在目标文件中可能是 originalName
-                return findSymbolMatch(targetSourceFile, reExportInfo.originalName, targetCode, targetFilePath)
+                return findSymbolMatch(targetSourceFile, state.reExportInfo.originalName, targetCode, targetFilePath)
             } catch (err) {
                 console.warn(`[Starmap] 读取重导出文件失败: ${targetFilePath}`, err)
             }

@@ -7,7 +7,7 @@ import { dirname, resolve, isAbsolute } from "path"
 import { markdownCodeHighlight } from "./lib/markdownItCodeHighlight"
 import { markdownCodeImportResolve } from "./lib/markdownImportResolve"
 import { markdownItImage } from "./lib/markdownItImage"
-import type { CodeUnit } from "../../../../core/Gen/CodeUnit"
+import type { CodeUnit } from "../../../../../core/Gen/CodeUnit"
 
 const anchorFunc = (anchor as any).default || anchor
 const permalink = (anchorFunc as any).permalink || (anchor as any).permalink
