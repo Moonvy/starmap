@@ -1,7 +1,7 @@
-import { createRouter, createWebHashHistory } from "@moonvy/starmap/node_modules/vue-router"
+import { createRouter, createWebHistory } from "@moonvy/starmap/node_modules/vue-router"
 
 const router = createRouter({
-    history: createWebHashHistory(),
+    history: createWebHistory(),
     routes: [
         {
             path: "/",
@@ -14,6 +14,8 @@ const router = createRouter({
 
     ],
 })
+
+
 
 // 如果存在 starmap-project-root 单元，默认跳转到该单元页面
 router.beforeEach((to) => {

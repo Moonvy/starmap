@@ -300,16 +300,44 @@ export function resolveHtmlLocalLinks(html: string, filePath: string, codeUnits:
         const cleanPath = pathPart.startsWith("./") ? pathPart.slice(2) : pathPart
         const targetAbsPath2 = resolve(rootPath, cleanPath)
 
-        // 在 codeUnits 列表中查找匹配的单元
-        const matchedUnit = codeUnits.find((unit) => {
-            if (!unit.readmeFullPath) return false
-            const unitAbs = resolve(unit.readmeFullPath)
-            return unitAbs === targetAbsPath1 || unitAbs === targetAbsPath2
-        })
+        // 寻找与 targetAbs 匹配的最佳单元（支持完全匹配和同目录/子目录下其他 markdown 文件的匹配）
+        const findBestUnit = (targetAbs: string) => {
+            let bestUnit = null
+            let maxLen = -1
+            const normalizedTarget = targetAbs.replace(/\\/g, "/")
+
+            for (const unit of codeUnits) {
+                if (!unit.readmeFullPath) continue
+                const unitAbs = resolve(unit.readmeFullPath)
+                const normalizedUnitAbs = unitAbs.replace(/\\/g, "/")
+
+                // 1. 如果完全相等，代表是该单元的主 readme.md，直接返回最高优先级
+                if (normalizedUnitAbs === normalizedTarget) {
+                    return unit
+                }
+
+                // 2. 否则，判断 targetAbs 是否位于该单元所在的目录或其子目录下
+                const unitDir = dirname(unitAbs)
+                const normalizedUnitDir = unitDir.replace(/\\/g, "/")
+                if (
+                    normalizedTarget === normalizedUnitDir ||
+                    normalizedTarget.startsWith(normalizedUnitDir + "/")
+                ) {
+                    if (normalizedUnitDir.length > maxLen) {
+                        maxLen = normalizedUnitDir.length
+                        bestUnit = unit
+                    }
+                }
+            }
+            return bestUnit
+        }
+
+        // 优先尝试相对于当前文件的绝对路径，其次尝试相对于项目根目录的绝对路径
+        const matchedUnit = findBestUnit(targetAbsPath1) || findBestUnit(targetAbsPath2)
 
         if (matchedUnit) {
-            // 转义为 vue-router hash 路由形式，例如：#/units/array#options
-            const newHref = `#/units/${matchedUnit.id}${hashPart}`
+            // 在 HTML5 History 模式下，直接转换为相对根的路由路径，例如：/units/array#options
+            const newHref = `/units/${matchedUnit.id}${hashPart}`
             return `<a${before}href="${newHref}"${after}>`
         }
 
