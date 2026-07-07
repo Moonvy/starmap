@@ -503,3 +503,80 @@ test("从 JSDoc 生成文档时展示 @example 注释 (默认保留或包裹为 
     expect(exampleIndex).toBeGreaterThan(-1)
     expect(paramsIndex).toBeLessThan(exampleIndex)
 })
+
+test("从包裹函数的对象字面量中，利用点路径精确匹配并生成文档", () => {
+    const source = [
+        "/**",
+        " * Base64 编码与解码工具对象",
+        " */",
+        "export const BASE64 = {",
+        "    /**",
+        "     * 将 Base64 编码的字符串解码为原始字符串",
+        "     * ",
+        "     * @param base64str - 需要解码的 Base64 编码字符串",
+        "     * @returns 解码后的原始字符串",
+        "     */",
+        "    decode(base64str: string): string {",
+        "        return base64str",
+        "    },",
+        "",
+        "    /**",
+        "     * 将字符串、ArrayBuffer 或 Uint8Array 编码为 Base64 字符串",
+        "     * ",
+        "     * @param data - 需要编码的数据",
+        "     */",
+        "    encode: (data: string | ArrayBuffer | Uint8Array): string => {",
+        "        return ''",
+        "    }",
+        "};"
+    ].join("\n")
+
+    // 1. 验证 MethodDeclaration 精确匹配
+    const resultDecode = renderImportDoc(source, "BASE64.decode")
+    expect(resultDecode).toContain("将 Base64 编码的字符串解码为原始字符串")
+    expect(getParamsJson(resultDecode)).toMatchObject([
+        { name: "base64str", type: "string", description: "- 需要解码的 Base64 编码字符串" }
+    ])
+    expect(getReturnsJson(resultDecode)).toMatchObject({
+        type: "string",
+        description: "解码后的原始字符串"
+    })
+
+    // 2. 验证 PropertyAssignment (箭头函数) 精确匹配
+    const resultEncode = renderImportDoc(source, "BASE64.encode")
+    expect(resultEncode).toContain("将字符串、ArrayBuffer 或 Uint8Array 编码为 Base64 字符串")
+    expect(getParamsJson(resultEncode)).toMatchObject([
+        { name: "data", type: "string | ArrayBuffer | Uint8Array", description: "- 需要编码的数据" }
+    ])
+})
+
+test("直接导入包裹函数的容器对象，自动渲染出所有子成员文档", () => {
+    const source = [
+        "/**",
+        " * Base64 编码与解码工具对象",
+        " */",
+        "export const BASE64 = {",
+        "    /**",
+        "     * 解码",
+        "     * @param base64str 输入",
+        "     */",
+        "    decode(base64str: string): string {",
+        "        return base64str",
+        "    }",
+        "};"
+    ].join("\n")
+
+    const result = renderImportDoc(source, "BASE64")
+    
+    // 容器自身的主体注释
+    expect(result).toContain("Base64 编码与解码工具对象")
+    // 子成员的四级标题
+    expect(result).toContain("#### `BASE64.decode`")
+    // 子成员的具体说明
+    expect(result).toContain("解码")
+    // 子成员的参数表
+    expect(result).toContain("<StarmapDocParams")
+    expect(getParamsJson(result)).toMatchObject([
+        { name: "base64str", type: "string", description: "输入" }
+    ])
+})

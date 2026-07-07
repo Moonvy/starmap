@@ -68,29 +68,21 @@ interface ParseContext {
  * @param symbolName 要分析的 symbol 名称
  * @param options 解析选项
  */
-export function renderImportDoc(code: string, symbolName: string, options: ImportDocOptions = {}): string {
-    const sourceFile = ts.createSourceFile(
-        options.filePath || "starmap-import-doc.ts",
-        code,
-        ts.ScriptTarget.Latest,
-        true,
-    )
-    const match = findSymbolMatch(sourceFile, symbolName, code, options.filePath)
-
-    if (!match) {
-        return `> [!WARNING] Doc Import Warning\n> Symbol \`${symbolName}\` not found.`
-    }
-
+/** 渲染单个 Match 节点
+ *
+ * @param match 节点匹配信息
+ * @param options 解析选项
+ * @param context 解析上下文
+ */
+function renderSingleMatch(match: SymbolMatch, options: ImportDocOptions, context: ParseContext): string {
     const docs = getDocParts(match.docNode, match.sourceFile, match.code, options.ignoreFirstLine ?? false)
-    const context: ParseContext = {
-        sourceFile: match.sourceFile,
-        code: match.code,
+    const localContext: ParseContext = {
+        ...context,
         paramComments: docs.paramComments,
         returnComment: docs.returnComment,
-        typeIndex: createTypeIndex(match.sourceFile),
     }
-    const params = getParamDocs(match.declaration, context)
-    const returnDoc = getReturnDoc(match.declaration, context)
+    const params = getParamDocs(match.declaration, localContext)
+    const returnDoc = getReturnDoc(match.declaration, localContext)
     const blocks: string[] = []
 
     if (docs.description) {
@@ -107,6 +99,111 @@ export function renderImportDoc(code: string, symbolName: string, options: Impor
             const formattedEx = trimmed.startsWith("```") ? ex : `\`\`\`ts\n${ex}\n\`\`\``
             blocks.push(`<StarmapDocExample>\n\n${formattedEx}\n\n</StarmapDocExample>`)
         }
+    }
+
+    return blocks.join("\n\n")
+}
+
+export function renderImportDoc(code: string, symbolName: string, options: ImportDocOptions = {}): string {
+    const sourceFile = ts.createSourceFile(
+        options.filePath || "starmap-import-doc.ts",
+        code,
+        ts.ScriptTarget.Latest,
+        true,
+    )
+    const match = findSymbolMatch(sourceFile, symbolName, code, options.filePath)
+
+    if (!match) {
+        return `> [!WARNING] Doc Import Warning\n> Symbol \`${symbolName}\` not found.`
+    }
+
+    const context: ParseContext = {
+        sourceFile: match.sourceFile,
+        code: match.code,
+        paramComments: new Map(),
+        returnComment: "",
+        typeIndex: createTypeIndex(match.sourceFile),
+    }
+
+    const mainDoc = renderSingleMatch(match, options, context)
+
+    // 检测主声明是否是“容器”（对象字面量、类声明、接口声明等）
+    // 只有当查询的 symbolName 并不包含点时（非精确成员查询），才自动展开子成员
+    const isDotPath = symbolName.includes(".")
+    const childrenDocs: string[] = []
+
+    if (!isDotPath) {
+        const decl = match.declaration
+        const childNodes: { name: string; node: ts.Node }[] = []
+
+        // 情况 A：类声明
+        if (ts.isClassDeclaration(decl)) {
+            for (const member of decl.members) {
+                // 排除构造函数
+                if (ts.isConstructorDeclaration(member)) {
+                    continue
+                }
+                if (member.name) {
+                    const memberName = getPropertyNameText(member.name, match.sourceFile)
+                    if (memberName) {
+                        childNodes.push({ name: memberName, node: member })
+                    }
+                }
+            }
+        }
+        // 情况 B：接口声明
+        else if (ts.isInterfaceDeclaration(decl)) {
+            for (const member of decl.members) {
+                if (member.name) {
+                    const memberName = getPropertyNameText(member.name, match.sourceFile)
+                    if (memberName) {
+                        childNodes.push({ name: memberName, node: member })
+                    }
+                }
+            }
+        }
+        // 情况 C：对象字面量变量声明或属性声明
+        else {
+            let initializer: ts.Expression | undefined
+            if (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl) || ts.isPropertyDeclaration(decl)) {
+                initializer = decl.initializer
+            }
+            if (initializer && ts.isObjectLiteralExpression(initializer)) {
+                for (const prop of initializer.properties) {
+                    if (prop.name) {
+                        const propName = getPropertyNameText(prop.name, match.sourceFile)
+                        if (propName) {
+                            childNodes.push({ name: propName, node: prop })
+                        }
+                    }
+                }
+            }
+        }
+
+        // 遍历并渲染子节点
+        for (const child of childNodes) {
+            const childMatch: SymbolMatch = {
+                docNode: child.node,
+                declaration: child.node,
+                sourceFile: match.sourceFile,
+                code: match.code,
+                filePath: match.filePath,
+            }
+            // 子成员不要忽略首行
+            const childDoc = renderSingleMatch(childMatch, { ...options, ignoreFirstLine: false }, context)
+            if (childDoc.trim()) {
+                childrenDocs.push(`#### \`${symbolName}.${child.name}\`\n\n${childDoc}`)
+            }
+        }
+    }
+
+    const blocks: string[] = []
+    if (mainDoc.trim()) {
+        blocks.push(mainDoc)
+    }
+
+    if (childrenDocs.length > 0) {
+        blocks.push(childrenDocs.join("\n\n"))
     }
 
     if (blocks.length === 0) {
@@ -151,12 +248,88 @@ function renderMainComment(description: string): string {
     return `<div class="starmap-import-doc-comment">${lines.join("")}</div>`
 }
 
-/** 在 AST 中查找指定 symbol 的声明
+/** 获取属性/成员名称文本
+ *
+ * @param name 属性名节点
+ * @param sourceFile TypeScript 源码 AST
+ */
+function getPropertyNameText(name: ts.PropertyName, sourceFile: ts.SourceFile): string {
+    if (ts.isIdentifier(name)) {
+        return name.text
+    }
+    if (ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
+        return name.text
+    }
+    return name.getText(sourceFile)
+}
+
+/** 寻找指定容器节点下的子成员
+ *
+ * @param parentMatch 父节点匹配信息
+ * @param partName 子成员名称
+ */
+function findChildMatch(parentMatch: SymbolMatch, partName: string): SymbolMatch | null {
+    const decl = parentMatch.declaration
+
+    // 检查 Class/Interface 的成员
+    if (ts.isClassDeclaration(decl) || ts.isInterfaceDeclaration(decl)) {
+        for (const member of decl.members) {
+            if (member.name && getPropertyNameText(member.name, parentMatch.sourceFile) === partName) {
+                return {
+                    docNode: member,
+                    declaration: member,
+                    sourceFile: parentMatch.sourceFile,
+                    code: parentMatch.code,
+                    filePath: parentMatch.filePath,
+                }
+            }
+        }
+    }
+
+    // 检查 TypeAlias 的成员
+    if (ts.isTypeAliasDeclaration(decl) && ts.isTypeLiteralNode(decl.type)) {
+        for (const member of decl.type.members) {
+            if (member.name && getPropertyNameText(member.name, parentMatch.sourceFile) === partName) {
+                return {
+                    docNode: member,
+                    declaration: member,
+                    sourceFile: parentMatch.sourceFile,
+                    code: parentMatch.code,
+                    filePath: parentMatch.filePath,
+                }
+            }
+        }
+    }
+
+    // 检查变量/属性初始值是对象字面量的情况
+    let initializer: ts.Expression | undefined
+    if (ts.isVariableDeclaration(decl) || ts.isPropertyAssignment(decl) || ts.isPropertyDeclaration(decl)) {
+        initializer = decl.initializer
+    }
+
+    if (initializer && ts.isObjectLiteralExpression(initializer)) {
+        for (const prop of initializer.properties) {
+            if (prop.name && getPropertyNameText(prop.name, parentMatch.sourceFile) === partName) {
+                return {
+                    docNode: prop,
+                    declaration: prop,
+                    sourceFile: parentMatch.sourceFile,
+                    code: parentMatch.code,
+                    filePath: parentMatch.filePath,
+                }
+            }
+        }
+    }
+
+    return null
+}
+
+/** 在 AST 中查找指定 symbol 的声明（仅寻找顶级名称）
  *
  * @param sourceFile TypeScript 源码 AST
- * @param symbolName 要查找的 symbol 名称
+ * @param symbolName 要查找的顶级 symbol 名称
  */
-function findSymbolMatch(
+function findSymbolMatchInternal(
     sourceFile: ts.SourceFile,
     symbolName: string,
     code: string,
@@ -232,6 +405,37 @@ function findSymbolMatch(
     }
 
     return null
+}
+
+/** 在 AST 中查找指定 symbol 的声明（支持点路径）
+ *
+ * @param sourceFile TypeScript 源码 AST
+ * @param symbolName 要查找的 symbol 名称，例如 "BASE64.decode"
+ */
+function findSymbolMatch(
+    sourceFile: ts.SourceFile,
+    symbolName: string,
+    code: string,
+    filePath?: string,
+): SymbolMatch | null {
+    const parts = symbolName.split(".")
+    const rootName = parts[0]
+    const rootMatch = findSymbolMatchInternal(sourceFile, rootName, code, filePath)
+    if (!rootMatch) {
+        return null
+    }
+
+    let currentMatch = rootMatch
+    for (let i = 1; i < parts.length; i++) {
+        const partName = parts[i]
+        const childMatch = findChildMatch(currentMatch, partName)
+        if (!childMatch) {
+            return null
+        }
+        currentMatch = childMatch
+    }
+
+    return currentMatch
 }
 
 /** 判断节点是否是目标命名声明
@@ -607,6 +811,23 @@ function getFunctionLike(declaration: ts.Node): ts.SignatureDeclarationBase | nu
     }
 
     if (ts.isVariableDeclaration(declaration)) {
+        if (
+            declaration.initializer &&
+            (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))
+        ) {
+            return declaration.initializer
+        }
+
+        if (declaration.type && ts.isFunctionTypeNode(declaration.type)) {
+            return declaration.type
+        }
+    }
+
+    if (
+        ts.isPropertyAssignment(declaration) ||
+        ts.isPropertyDeclaration(declaration) ||
+        ts.isPropertySignature(declaration)
+    ) {
         if (
             declaration.initializer &&
             (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))
