@@ -101,6 +101,14 @@ export function renderImportDoc(code: string, symbolName: string, options: Impor
         blocks.push(renderParamsComponent(params, returnDoc))
     }
 
+    if (docs.examples && docs.examples.length > 0) {
+        for (const ex of docs.examples) {
+            const trimmed = ex.trim()
+            const formattedEx = trimmed.startsWith("```") ? ex : `\`\`\`ts\n${ex}\n\`\`\``
+            blocks.push(`<StarmapDocExample>\n\n${formattedEx}\n\n</StarmapDocExample>`)
+        }
+    }
+
     if (blocks.length === 0) {
         return `> [!WARNING] Doc Import Warning\n> Symbol \`${symbolName}\` has no readable docs.`
     }
@@ -258,9 +266,10 @@ function getDocParts(
     sourceFile: ts.SourceFile,
     code: string,
     ignoreFirstLine: boolean,
-): { description: string; paramComments: Map<string, string>; returnComment: string } {
+): { description: string; paramComments: Map<string, string>; returnComment: string; examples: string[] } {
     const jsDocs = getJsDocs(node)
     const paramComments = new Map<string, string>()
+    const examples: string[] = []
     let returnComment = ""
 
     if (jsDocs.length > 0) {
@@ -276,6 +285,13 @@ function getDocParts(
 
         for (const doc of jsDocs) {
             doc.tags?.forEach((tag) => {
+                if (tag.tagName && tag.tagName.text === "example") {
+                    const exampleComment = renderJSDocComment(tag.comment, sourceFile)
+                    if (exampleComment) {
+                        examples.push(exampleComment)
+                    }
+                    return
+                }
                 if (!ts.isJSDocParameterTag(tag)) {
                     if (ts.isJSDocReturnTag(tag)) {
                         returnComment = renderJSDocComment(tag.comment, sourceFile)
@@ -286,7 +302,7 @@ function getDocParts(
             })
         }
 
-        return { description, paramComments, returnComment }
+        return { description, paramComments, returnComment, examples }
     }
 
     return {
@@ -298,6 +314,7 @@ function getDocParts(
             .join("\n\n"),
         paramComments,
         returnComment,
+        examples,
     }
 }
 

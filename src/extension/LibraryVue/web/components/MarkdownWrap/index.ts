@@ -6,6 +6,7 @@ import StarmapSelect from "./components/StarmapSelect/StarmapSelect.vue"
 import StarmapCheckbox from "./components/StarmapCheckbox/StarmapCheckbox.vue"
 import StarmapInput from "./components/StarmapInput/StarmapInput.vue"
 import StarmapDocParams from "./components/StarmapDocParams/StarmapDocParams.vue"
+import StarmapDocExample from "./components/StarmapDocExample/StarmapDocExample.vue"
 
 /** 注册全局组件 */
 export function registerMarkdownComponents(vueApp: App) {
@@ -16,6 +17,7 @@ export function registerMarkdownComponents(vueApp: App) {
     vueApp.component("StarmapInput", StarmapInput)
     vueApp.component("StarmapVueDoc", StarmapVueDoc)
     vueApp.component("StarmapDocParams", StarmapDocParams)
+    vueApp.component("StarmapDocExample", StarmapDocExample)
 }
 
 /** Vue 模板中使用的组件 */
@@ -27,5 +29,6 @@ export const MarkdownComponents = {
     StarmapInput: StarmapInput,
     StarmapVueDoc: StarmapVueDoc,
     StarmapDocParams: StarmapDocParams,
+    StarmapDocExample: StarmapDocExample,
     LayoutH: LayoutH,
 }

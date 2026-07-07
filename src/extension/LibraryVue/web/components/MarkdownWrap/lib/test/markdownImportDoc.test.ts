@@ -473,3 +473,33 @@ test("支持定位重导出（re-export）的源文件注释", () => {
         if (fs.existsSync(tempDir)) fs.rmdirSync(tempDir)
     }
 })
+
+test("从 JSDoc 生成文档时展示 @example 注释 (默认保留或包裹为 ts 代码块)", () => {
+    // 包含参数和没有写 ``` 的普通文本 example
+    const source = [
+        "/**",
+        " * getCoreVersion",
+        " * 获取核心版本号。",
+        " * @param mode 模式",
+        " * @example",
+        " * const ver = getCoreVersion()",
+        " * console.log(ver)",
+        " */",
+        "export function getCoreVersion(mode: string): string {",
+        "    return '1.0.0'",
+        "}",
+    ].join("\n")
+
+    const result = renderImportDoc(source, "getCoreVersion")
+
+    // 1. 验证默认加了 ```ts 包裹
+    expect(result).toContain("<StarmapDocExample>")
+    expect(result).toContain("```ts\nconst ver = getCoreVersion()\nconsole.log(ver)\n```")
+
+    // 2. 验证顺序：StarmapDocParams 应该在 StarmapDocExample 之前
+    const paramsIndex = result.indexOf("<StarmapDocParams")
+    const exampleIndex = result.indexOf("<StarmapDocExample")
+    expect(paramsIndex).toBeGreaterThan(-1)
+    expect(exampleIndex).toBeGreaterThan(-1)
+    expect(paramsIndex).toBeLessThan(exampleIndex)
+})
