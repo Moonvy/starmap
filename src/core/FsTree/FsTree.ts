@@ -211,7 +211,7 @@ export class FsTree {
             const parts = normalizedPath.split("/").filter(Boolean)
             for (const part of parts) {
                 if (ignoreNames.has(part)) return true
-                if (part.startsWith(".")) return true
+                if (part.startsWith(".") && part !== ".starmap-skip") return true
             }
             return false
         }

@@ -188,7 +188,17 @@ export class Gen {
                 }
                 return fileName === "readme.md"
             }
+            const isSkipFilePath = (relativePath: string) => {
+                return path.basename(relativePath).toLowerCase() === ".starmap-skip"
+            }
+
             fsEvent.on(FsEvents.add, async (event) => {
+                if (isSkipFilePath(event.relativePath)) {
+                    logger.log(`<Starmap|Watch> 🔁 .starmap-skip 新增 → 触发全量重新生成`)
+                    generateDebounced()
+                    return
+                }
+
                 if (isUnitEntryPath(event.relativePath)) {
                     // 新增入口文件 → 创建新的 CodeUnit
                     logger.log(`<Starmap|Watch> ✨ 新增 CodeUnit: _${event.relativePath}_`)
@@ -211,6 +221,12 @@ export class Gen {
             })
 
             fsEvent.on(FsEvents.update, async (event) => {
+                if (isSkipFilePath(event.relativePath)) {
+                    logger.log(`<Starmap|Watch> 🔁 .starmap-skip 变更 → 触发全量重新生成`)
+                    generateDebounced()
+                    return
+                }
+
                 if (isUnitEntryPath(event.relativePath)) {
                     // 入口文件变化 → 直接更新对应的 CodeUnit
                     const unit = findUnitByEntryPath(event.relativePath)
@@ -236,6 +252,12 @@ export class Gen {
             })
 
             fsEvent.on(FsEvents.delete, async (event) => {
+                if (isSkipFilePath(event.relativePath)) {
+                    logger.log(`<Starmap|Watch> 🔁 .starmap-skip 删除 → 触发全量重新生成`)
+                    generateDebounced()
+                    return
+                }
+
                 if (isUnitEntryPath(event.relativePath)) {
                     // 入口文件被删除 → 移除对应 CodeUnit，重新生成全部
                     const unit = findUnitByEntryPath(event.relativePath)
