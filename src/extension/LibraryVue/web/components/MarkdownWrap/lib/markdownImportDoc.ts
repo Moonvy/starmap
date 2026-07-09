@@ -232,20 +232,8 @@ function createTypeIndex(sourceFile: ts.SourceFile): Map<string, TypeDeclaration
     return typeIndex
 }
 
-/** 渲染主要注释内容，外层用 div 方便前端统一控制样式
- *
- * @param description 主要注释 Markdown 内容
- */
 function renderMainComment(description: string): string {
-    const lines = description.split("\n").map((line) => {
-        if (line.trim() === "") {
-            return `<div class="starmap-import-doc-comment-line is-empty"></div>`
-        }
-
-        return `<div class="starmap-import-doc-comment-line">${inlineMarkdown.renderInline(line)}</div>`
-    })
-
-    return `<div class="starmap-import-doc-comment">${lines.join("")}</div>`
+    return `<div class="starmap-import-doc-comment">${inlineMarkdown.render(description)}</div>`
 }
 
 /** 获取属性/成员名称文本
@@ -740,7 +728,8 @@ function getReturnDoc(declaration: ts.Node, context: ParseContext): ReturnDoc | 
     }
 
     const type = renderReturnType(functionLike, context.sourceFile)
-    if (!type && !context.returnComment) {
+    const isUnknownOrEmpty = !type || type === "unknown"
+    if (isUnknownOrEmpty && !context.returnComment) {
         return null
     }
 

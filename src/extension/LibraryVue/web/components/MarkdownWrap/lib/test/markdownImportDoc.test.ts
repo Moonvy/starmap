@@ -146,7 +146,7 @@ test("从 class 注释生成文档", () => {
     const result = renderImportDoc(source, "StarmapRunner", { ignoreFirstLine: true })
 
     expect(result).toBe(
-        '<div class="starmap-import-doc-comment"><div class="starmap-import-doc-comment-line">管理星图生成流程。</div></div>',
+        '<div class="starmap-import-doc-comment"><p>管理星图生成流程。</p>\n</div>',
     )
 })
 
@@ -166,7 +166,7 @@ test("主注释忽略首行并保留原始换行", () => {
     const result = renderImportDoc(source, "StarmapRunner", { ignoreFirstLine: true })
 
     expect(result).toBe(
-        '<div class="starmap-import-doc-comment"><div class="starmap-import-doc-comment-line">第一段说明。</div><div class="starmap-import-doc-comment-line is-empty"></div><div class="starmap-import-doc-comment-line">第二段说明。</div></div>',
+        '<div class="starmap-import-doc-comment"><p>第一段说明。</p>\n<p>第二段说明。</p>\n</div>',
     )
 })
 
@@ -184,7 +184,7 @@ test("支持 JSDoc 起始行直接写主标题", () => {
     const result = renderImportDoc(source, "createNode", { ignoreFirstLine: true })
 
     expect(result).toContain(
-        '<div class="starmap-import-doc-comment-line">在指定的父节点下批量创建新节点。</div><div class="starmap-import-doc-comment-line">所有创建的节点都将自动归属到指定的 parentId 下。</div>',
+        '<p>在指定的父节点下批量创建新节点。\n所有创建的节点都将自动归属到指定的 parentId 下。</p>',
     )
     expect(result).not.toContain("创建节点")
 })
@@ -201,7 +201,7 @@ test("主注释行内容支持 Markdown inline 语法", () => {
     const result = renderImportDoc(source, "createNode")
 
     expect(result).toContain(
-        '<div class="starmap-import-doc-comment-line">使用 <code>parentId</code> 创建 <strong>节点</strong>。</div>',
+        '<p>使用 <code>parentId</code> 创建 <strong>节点</strong>。</p>',
     )
 })
 
@@ -220,7 +220,7 @@ test("从 JSDoc 原始范围解析装饰器声明的主注释", () => {
     const result = renderImportDoc(source, "StarmapRunner", { ignoreFirstLine: true })
 
     expect(result).toBe(
-        '<div class="starmap-import-doc-comment"><div class="starmap-import-doc-comment-line">装饰器声明正文。</div></div>',
+        '<div class="starmap-import-doc-comment"><p>装饰器声明正文。</p>\n</div>',
     )
 })
 
@@ -238,7 +238,7 @@ test("普通行注释也忽略首行并保留换行", () => {
     const result = renderImportDoc(source, "StarmapRunner", { ignoreFirstLine: true })
 
     expect(result).toBe(
-        '<div class="starmap-import-doc-comment"><div class="starmap-import-doc-comment-line">第一段说明。</div><div class="starmap-import-doc-comment-line is-empty"></div><div class="starmap-import-doc-comment-line">第二段说明。</div></div>',
+        '<div class="starmap-import-doc-comment"><p>第一段说明。</p>\n<p>第二段说明。</p>\n</div>',
     )
 })
 
@@ -579,4 +579,58 @@ test("直接导入包裹函数的容器对象，自动渲染出所有子成员�
     expect(getParamsJson(result)).toMatchObject([
         { name: "base64str", type: "string", description: "输入" }
     ])
+})
+
+test("注释中的 Markdown 语法应被解析为块级元素，例如无序列表", () => {
+    const source = [
+        "/** 生成一个新的 UID",
+        " * - UID 是一个短形式的 UUID.v7，使用 base58 编码，长度约为 22 个字符",
+        " * - UUID.v7 是一种基于时间排序的有序 ID",
+        " * @example",
+        " * uid.new() // '3neAo7bG44mcTkraf2puyx'",
+        " */",
+        "export function newUid(): string {",
+        "    return ''",
+        "}"
+    ].join("\n")
+
+    const result = renderImportDoc(source, "newUid")
+    
+    // 验证无序列表是否生成了 <ul> <li> 等元素
+    expect(result).toContain("<ul>")
+    expect(result).toContain("<li>UID 是一个短形式的 UUID.v7，使用 base58 编码，长度约为 22 个字符</li>")
+    expect(result).toContain("<li>UUID.v7 是一种基于时间排序的有序 ID</li>")
+})
+
+test("当返回值是 unknown 且有 @returns 注释时，应显示 returns 模块", () => {
+    const source = [
+        "/**",
+        " * toUUID",
+        " * @returns 转换后的 UUID",
+        " */",
+        "export const toUUID = (uid: string) => {",
+        "    return uid",
+        "}"
+    ].join("\n")
+
+    const result = renderImportDoc(source, "toUUID")
+    expect(result).toContain("returns-json=")
+    expect(getReturnsJson(result)).toMatchObject({
+        type: "unknown",
+        description: "转换后的 UUID"
+    })
+})
+
+test("当返回值是 unknown 且无 @returns 注释时，不应显示 returns 模块", () => {
+    const source = [
+        "/**",
+        " * toUUID",
+        " */",
+        "export const toUUID = (uid: string) => {",
+        "    return uid",
+        "}"
+    ].join("\n")
+
+    const result = renderImportDoc(source, "toUUID")
+    expect(result).not.toContain("returns-json=")
 })
