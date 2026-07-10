@@ -9,6 +9,8 @@ export interface CodeUnitMetadata {
     headSubTitle?: string
     /** 图标 haoduoIconPkg 的图标名 */
     icon?: string
+    /** 目录树中该文件夹是否初始展开（默认为 true；设置为 false 则初始折叠） */
+    expand?: boolean
 
     [key: string]: any
 }

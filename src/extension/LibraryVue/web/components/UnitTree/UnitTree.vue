@@ -122,10 +122,22 @@ export default defineComponent({
                 }
             },
         },
-        /** 监听外部传入的选中 ID 变化（如浏览器前进/后退） */
+        /** 监听外部传入的选中 ID 变化（如浏览器前进/后退），同时展开路径到目标节点 */
         initialSelectedId(newId: string | null) {
             if (newId !== this.selectedId) {
                 this.selectedId = newId
+                // 将目标节点路径上的所有祖先加入展开集合（追加而非重置，保留用户已手动折叠的其他节点）
+                if (newId) {
+                    const path = findPathToId(this.units, newId)
+                    if (path && path.length > 1) {
+                        const next = new Set(this.expandedIds)
+                        // 路径中除最后一个节点（选中项本身）外，其余都是需要展开的祖先
+                        for (let i = 0; i < path.length - 1; i++) {
+                            next.add(path[i].id)
+                        }
+                        this.expandedIds = next
+                    }
+                }
             }
         },
     },
@@ -227,24 +239,46 @@ export default defineComponent({
 
 /**
  * 构建默认展开集合
+ * - 第一层（depth=0）默认展开，除非显式设置 expand: false
+ * - 第二层及以后（depth≥1）默认折叠，除非显式设置 expand: true
+ * - 无论 expand 如何，选中节点所在路径上的所有祖先始终展开，确保选中项可见
  * @param units 根节点列表
  * @param selectedId 当前选中 ID
  */
 function buildDefaultExpanded(units: UnitNode[], selectedId: string | null): Set<string> {
     const expanded = new Set<string>()
-    for (const node of units) {
-        expanded.add(node.id)
-    }
 
+    // 收集选中节点路径上的所有节点 ID（这些节点必须展开才能看到选中项）
+    const selectedPathIds = new Set<string>()
     if (selectedId) {
         const path = findPathToId(units, selectedId)
         if (path) {
             for (const node of path) {
-                expanded.add(node.id)
+                selectedPathIds.add(node.id)
             }
         }
     }
 
+    // 递归遍历所有节点，根据层级和 expand 属性决定初始是否展开
+    function traverse(nodes: UnitNode[], depth: number) {
+        for (const node of nodes) {
+            if (node.children && node.children.length > 0) {
+                // 选中路径上的节点始终展开（保证选中项可见）
+                const isOnSelectedPath = selectedPathIds.has(node.id)
+                // 第一层（depth=0）默认展开，更深层默认折叠
+                // metadata.expand 可显式覆盖：true 强制展开，false 强制折叠
+                const expandMeta = node.metadata?.expand
+                const defaultExpand = depth === 0
+                const shouldExpand = (expandMeta === undefined ? defaultExpand : expandMeta) || isOnSelectedPath
+                if (shouldExpand) {
+                    expanded.add(node.id)
+                }
+                traverse(node.children, depth + 1)
+            }
+        }
+    }
+
+    traverse(units, 0)
     return expanded
 }
 
