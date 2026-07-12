@@ -31,6 +31,17 @@ console.log('world')
         // displayLang 会把 javascript 简化为 js
         expect(html).toContain('data-language="js"')
     })
+
+    test("支持修饰符及大小写不敏感的语言名称", async () => {
+        const code = `fn main() {}`
+        // 应该能支持 "Rust" (大写)
+        const html1 = await markdownCodeHighlight(code, "Rust", "")
+        expect(html1).toContain('data-language="rust"')
+
+        // 应该能支持 "rust,no_run" (修饰符)
+        const html2 = await markdownCodeHighlight(code, "rust,no_run", "")
+        expect(html2).toContain('data-language="rust"')
+    })
 })
 
 describe("parseHighlightLines", () => {

@@ -15,7 +15,11 @@ import { transformerNotationDiff } from "@shikijs/transformers"
  * @param attrs 代码块 info 字符串（如 `ts {1,3-5} line-numbers=2`）
  */
 export async function markdownCodeHighlight(str: string, lang: string, attrs: string) {
-    if (!lang) lang = "javascript"
+    if (!lang) {
+        lang = "javascript"
+    } else {
+        lang = lang.toLowerCase().split(/[,\s;]/)[0]
+    }
 
     let rawLang = lang
     // 当语言是 vue 时，自动探测是 SFC 还是 vue-html (纯 template)
