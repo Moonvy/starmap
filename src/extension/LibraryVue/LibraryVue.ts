@@ -13,9 +13,11 @@ import { readableMs } from "fzz"
 import { createRootRoutesCode } from "./lib/createRootRoutesCode"
 import { createGlobalComponentsCode } from "./lib/createGlobalComponentsCode"
 import { createUnitComponentCode } from "./lib/createUnitComponentCode"
-import { invalidateUnitComponentsCache, clearUnitComponentsCache } from "./lib/resolveUnitComponents"
+import { invalidateUnitComponentsCache } from "./lib/resolveUnitComponents"
+import { tryGetFreshUnitGenStamp, writeUnitGenStamp } from "./lib/unitGenCache"
 import { outputReadmeVue } from "./gen/readme/outputReadmeVue"
 import { outputFileWithCache } from "../../utils/fs/outputFileWithCache"
+import { ensureShikiHighlighter } from "./web/components/MarkdownWrap/lib/markdownItCodeHighlight"
 import { parse } from "vue-docgen-api"
 import fs from "node:fs/promises"
 
@@ -34,15 +36,14 @@ export function LibraryVue(options?: {}) {
         core.logger.debug("<LibraryVue|init> start.")
 
         // 单个代码单元生成
-        core.eventHub.on(StarmapCoreEvents.generateUnit, async ({ codeUnit }) => {
-            // 热更新/重新生成时失效该 unit 的组件解析缓存
-            invalidateUnitComponentsCache(codeUnit)
-            await generateCodeUnit(codeUnit, core)
+        core.eventHub.on(StarmapCoreEvents.generateUnit, async ({ codeUnit, force }) => {
+            await generateCodeUnit(codeUnit, core, { force })
         })
 
-        // 全量生成开始时清空组件缓存，保证本轮结果一致
+        // 全量生成开始：预热 Shiki（真正重新生成的 unit 会单独 invalidate 组件缓存）
         core.eventHub.on(StarmapCoreEvents.generate, async () => {
-            clearUnitComponentsCache()
+            // 不 await：highlight 内部会 ensure；提前触发可与扫描重叠
+            void ensureShikiHighlighter()
         })
 
         // 全部代码单元生成完成后
@@ -215,32 +216,59 @@ async function ensureDependencies(core: StarmapCore) {
     }
 }
 
-/** 生成单个 CodeUnit */
-async function generateCodeUnit(codeUnit: CodeUnit, core: StarmapCore) {
+/** 生成单个 CodeUnit
+ * @param codeUnit 代码单元
+ * @param core StarmapCore
+ * @param options.force 强制重新生成，忽略增量缓存
+ */
+async function generateCodeUnit(
+    codeUnit: CodeUnit,
+    core: StarmapCore,
+    options?: { force?: boolean },
+) {
     const { unitPath } = codeUnit
+
+    // 增量跳过：输入未变且输出齐全时，只恢复热更新依赖列表
+    if (!options?.force) {
+        const freshStamp = await tryGetFreshUnitGenStamp(codeUnit)
+        if (freshStamp) {
+            codeUnit.readmeImportDependencyPaths = freshStamp.deps || []
+            core.logger.debug(`  _├_  skipped (cache hit)`)
+            return
+        }
+    }
+
+    // 真正重新生成前再失效组件解析缓存
+    invalidateUnitComponentsCache(codeUnit)
 
     let t0 = performance.now()
     try {
-        // 输出 /units/id/metadata.ts 文件
         const metadataTsPath = path.join(unitPath, "metadata.ts")
+        const readmeVuePath = path.join(unitPath, "readme.vue")
+        const unitVuePath = path.join(unitPath, "unit.vue")
+
+        // readme 渲染、组件解析、vue-docgen 彼此无依赖，可并行
+        const [, unitVueCode] = await Promise.all([
+            outputReadmeVue(codeUnit, readmeVuePath),
+            createUnitComponentCode(codeUnit),
+            outputVueMetadataIfNeeded(codeUnit, unitPath, core),
+        ])
+
         outputTemplate("unit.metadata.ts.hbs", metadataTsPath, {
             mainComponentFsNode: !!codeUnit.mainComponentFsNode,
         })
-
-        // 输出 /units/id/readme.vue 文件
-        const readmeVuePath = path.join(unitPath, "readme.vue")
-        await outputReadmeVue(codeUnit, readmeVuePath)
-
-        // 输出 /units/id/unit.vue 文件
-        let unitVueCode = await createUnitComponentCode(codeUnit)
-        const unitVuePath = path.join(unitPath, "unit.vue")
         outputTemplate("unit.vue.hbs", unitVuePath, {
             codeUnit,
             unitVueCode,
         })
+
+        // 写入增量 stamp，供下次启动跳过
+        await writeUnitGenStamp(codeUnit, codeUnit.readmeImportDependencyPaths || [])
     } catch (err: any) {
         const readmePath = codeUnit.readmeFsNode?.fileFullPath || "未知路径"
-        const genError = new Error(`[CodeUnit: ${codeUnit.id}] 生成失败 (Readme: ${readmePath})\n错误原因: ${err.message}`)
+        const genError = new Error(
+            `[CodeUnit: ${codeUnit.id}] 生成失败 (Readme: ${readmePath})\n错误原因: ${err.message}`,
+        )
         genError.stack = err.stack
         throw genError
     }
@@ -248,25 +276,46 @@ async function generateCodeUnit(codeUnit: CodeUnit, core: StarmapCore) {
     let t1 = performance.now()
     let dt = t1 - t0
     core.logger.debug(`  _├_  _${readableMs(dt).padEnd(7)}_  output _unit.vue,metadata.ts_ `)
+}
 
-    // 输出 /units/id/vue-metadata.json 文件（如果存在主组件，且内容有变更）
-    if (codeUnit.mainComponentFsNode) {
+/**
+ * 输出 vue-metadata.json（主组件存在且源文件相对输出结果有变更时）
+ * @param codeUnit 代码单元
+ * @param unitPath 单元输出目录
+ * @param core StarmapCore
+ */
+async function outputVueMetadataIfNeeded(codeUnit: CodeUnit, unitPath: string, core: StarmapCore) {
+    if (!codeUnit.mainComponentFsNode) return
+
+    try {
+        const vueFilePath = codeUnit.mainComponentFsNode.fileFullPath
+        const stat = await fs.stat(vueFilePath)
+        const currentMtime = stat.mtimeMs
+        const cachedMtime = vueDocgenMtimeCache.get(vueFilePath)
+        const vueMetadataPath = path.join(unitPath, "vue-metadata.json")
+
+        // 内存缓存命中
+        if (cachedMtime === currentMtime) return
+
+        // 磁盘结果仍新鲜：输出文件 mtime >= 源文件 mtime 则跳过解析（跨进程复用）
         try {
-            const vueFilePath = codeUnit.mainComponentFsNode.fileFullPath
-            const stat = await fs.stat(vueFilePath)
-            const currentMtime = stat.mtimeMs
-            const cachedMtime = vueDocgenMtimeCache.get(vueFilePath)
-
-            if (cachedMtime !== currentMtime) {
-                let t0 = performance.now()
-                const vueDoc = await parse(vueFilePath)
-                const vueMetadataPath = path.join(unitPath, "vue-metadata.json")
-                outputFileWithCache(vueMetadataPath, JSON.stringify(vueDoc, null, 4))
+            const outStat = await fs.stat(vueMetadataPath)
+            if (outStat.mtimeMs >= currentMtime) {
                 vueDocgenMtimeCache.set(vueFilePath, currentMtime)
-
-                let dt = performance.now() - t0
-                core.logger.debug(`  _├_  _${readableMs(dt).padEnd(7)}_  output _vue-metadata.json_`)
+                return
             }
-        } catch {}
+        } catch {
+            // 输出不存在，继续解析
+        }
+
+        let tParse = performance.now()
+        const vueDoc = await parse(vueFilePath)
+        outputFileWithCache(vueMetadataPath, JSON.stringify(vueDoc, null, 4))
+        vueDocgenMtimeCache.set(vueFilePath, currentMtime)
+
+        let dt = performance.now() - tParse
+        core.logger.debug(`  _├_  _${readableMs(dt).padEnd(7)}_  output _vue-metadata.json_`)
+    } catch {
+        // vue-docgen 失败时静默跳过，不影响主流程
     }
 }

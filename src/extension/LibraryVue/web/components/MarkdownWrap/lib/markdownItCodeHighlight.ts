@@ -1,4 +1,4 @@
-import { codeToHtml, ShikiTransformer } from "shiki/bundle/full"
+import { createHighlighter, type Highlighter, type ShikiTransformer } from "shiki/bundle/full"
 import { createHash } from "node:crypto"
 
 import { transformerNotationDiff } from "@shikijs/transformers"
@@ -7,6 +7,58 @@ import { transformerNotationDiff } from "@shikijs/transformers"
 const highlightResultCache = new Map<string, string>()
 /** 缓存上限，防止长时间 watch 下无限增长 */
 const HIGHLIGHT_CACHE_MAX = 500
+
+/** 首批预加载的高频语言（其余按需 loadLanguage，避免冷启动加载过重） */
+const PRELOAD_LANGS = ["javascript", "typescript", "vue", "vue-html", "json", "html", "css", "bash", "markdown"] as const
+
+const THEMES = ["github-light", "one-dark-pro"] as const
+
+/** 进程内共享 Highlighter，避免 codeToHtml 每次走全局懒加载竞争 */
+let highlighterPromise: Promise<Highlighter> | null = null
+/** 并发生成时同一语言只 load 一次 */
+const languageLoadPromises = new Map<string, Promise<void>>()
+
+/**
+ * 预热 / 获取共享 Shiki Highlighter
+ * 全量生成开始时调用，降低首批 unit 的冷启动抖动
+ */
+export function ensureShikiHighlighter(): Promise<Highlighter> {
+    if (!highlighterPromise) {
+        highlighterPromise = createHighlighter({
+            themes: [...THEMES],
+            langs: [...PRELOAD_LANGS],
+        })
+    }
+    return highlighterPromise
+}
+
+/**
+ * 确保 highlighter 已加载指定语言（并发安全）
+ * @param highlighter Shiki Highlighter
+ * @param lang 语言 id
+ */
+async function ensureLanguageLoaded(highlighter: Highlighter, lang: string): Promise<string> {
+    const loaded = highlighter.getLoadedLanguages()
+    if (loaded.includes(lang)) return lang
+
+    let pending = languageLoadPromises.get(lang)
+    if (!pending) {
+        pending = highlighter
+            .loadLanguage(lang as any)
+            .then(() => undefined)
+            .catch(async () => {
+                // 未知语言回退 text
+                if (!highlighter.getLoadedLanguages().includes("text")) {
+                    await highlighter.loadLanguage("text")
+                }
+            })
+        languageLoadPromises.set(lang, pending)
+    }
+    await pending
+
+    if (highlighter.getLoadedLanguages().includes(lang)) return lang
+    return "text"
+}
 
 /**
  * 渲染 Markdown 代码块高亮
@@ -46,9 +98,12 @@ export async function markdownCodeHighlight(str: string, lang: string, attrs: st
         return cached
     }
 
+    const highlighter = await ensureShikiHighlighter()
+    lang = await ensureLanguageLoaded(highlighter, lang)
+
     let html = ""
     try {
-        html = await codeToHtml(str, {
+        html = highlighter.codeToHtml(str, {
             lang,
             themes: {
                 light: "github-light",
@@ -113,10 +168,7 @@ function buildHighlightCacheKey(
     lineNumbersResult: false | true | number,
 ): string {
     const contentHash = createHash("sha1").update(str).digest("hex").slice(0, 16)
-    const linesKey =
-        highlightLines.size > 0
-            ? [...highlightLines].sort((a, b) => a - b).join(",")
-            : ""
+    const linesKey = highlightLines.size > 0 ? [...highlightLines].sort((a, b) => a - b).join(",") : ""
     return `${lang}|${rawLang}|${attrs}|ln:${String(lineNumbersResult)}|hl:${linesKey}|${contentHash}`
 }
 

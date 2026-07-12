@@ -29,6 +29,117 @@ function getImportArgValue(args: string, name: string): string {
     return (match?.[1] || match?.[2] || match?.[3] || "").trim()
 }
 
+interface ResolvedImport {
+    match: RegExpMatchArray
+    resolvedContent: string
+    imports: { name: string; path: string }[]
+    dependencies: string[]
+}
+
+/**
+ * 解析单条 @import 指令
+ * @param match 正则匹配结果
+ * @param filePath 当前 markdown 文件路径
+ */
+async function resolveOneImport(match: RegExpMatchArray, filePath: string | undefined): Promise<ResolvedImport> {
+    const rawPath = match.groups!.path1 || match.groups!.path2
+    const importPath = rawPath.slice(1, -1)
+    const args = (match.groups!.args1 || match.groups!.args2 || "").trim()
+    const imports: { name: string; path: string }[] = []
+    const dependencies: string[] = []
+
+    let resolvedContent = ""
+    try {
+        if (!filePath) {
+            throw new Error("filePath is required to resolve relative import paths")
+        }
+        const dir = path.dirname(filePath)
+        const absolutePath = path.resolve(dir, importPath)
+        dependencies.push(absolutePath)
+
+        let fileContent = await fs.readFile(absolutePath, "utf-8")
+        let ext = path.extname(absolutePath).toLowerCase()
+        let docSymbolName = getImportArgValue(args, "doc")
+        let ignoreFirstLine = false
+        if (!docSymbolName) {
+            docSymbolName = getImportArgValue(args, "doc.notitle")
+            if (docSymbolName) {
+                ignoreFirstLine = true
+            }
+        }
+
+        if (docSymbolName) {
+            // 只有命中 @doc 时才加载 AST 文档解析逻辑，避免普通导入产生额外开销
+            const { renderImportDoc } = await import("./markdownImportDoc")
+            resolvedContent = renderImportDoc(fileContent, docSymbolName, {
+                filePath: absolutePath,
+                ignoreFirstLine,
+            })
+        } else if (ext === ".md") {
+            // 递归解析 Markdown 片段（不加入 imports，内容直接内联）
+            const subResult = await markdownImportResolve(fileContent, { filePath: absolutePath })
+            resolvedContent = subResult.markdown
+            if (subResult.imports) {
+                // 与原先 unshift 行为一致：子级 import 排在前面
+                imports.unshift(...subResult.imports)
+            }
+            if (subResult.dependencies) {
+                // 子依赖在前，当前文件在后（与串行 unshift 顺序一致）
+                dependencies.unshift(...subResult.dependencies)
+            }
+        } else {
+            const extWithoutDot = ext.slice(1) || "text" // 去掉 .
+            let finalArgs = args || ""
+
+            // 处理 @only=symbolName 的情况
+            if (/\B@only\b/.test(finalArgs) || /\b@only\b/.test(finalArgs)) {
+                let symbolName = ""
+                const onlyMatch = finalArgs.match(/@only\s*=\s*([^\s]+)/)
+                if (onlyMatch) {
+                    symbolName = onlyMatch[1]
+                }
+                if (symbolName) {
+                    fileContent = substringJsBySymbol(fileContent, symbolName)
+                }
+            }
+
+            if (/\B@file\b/.test(finalArgs) || /\b@file\b/.test(finalArgs)) {
+                const baseName = path.basename(absolutePath)
+                // If it's just @file without value, replace it
+                if (finalArgs.match(/@file(?!\=)/)) {
+                    finalArgs = finalArgs.replace(/@file(?!\=)/g, `@file="${baseName}"`)
+                }
+            }
+
+            if (finalArgs.includes("@raw")) {
+                const importName = getImportName(absolutePath)
+                imports.push({
+                    name: importName,
+                    path: absolutePath,
+                })
+                resolvedContent = `<${importName} />`
+            } else if (finalArgs.includes("@preview")) {
+                const importName = getImportName(absolutePath)
+                imports.push({
+                    name: importName,
+                    path: absolutePath,
+                })
+                finalArgs = `${finalArgs} @import-component="${importName}"`
+                resolvedContent = `\`\`\`${extWithoutDot} ${finalArgs}\n${fileContent?.trim()}\n\`\`\``
+            } else {
+                // 普通代码块，不需要加入 imports
+                resolvedContent = `\`\`\`${extWithoutDot} ${finalArgs}\n${fileContent?.trim()}\n\`\`\``
+            }
+        }
+    } catch (error) {
+        resolvedContent = `\n> [!WARNING] Import Error\n> \`@import ${importPath}\` failed: ${
+            (error as Error).message
+        }\n`
+    }
+
+    return { match, resolvedContent, imports, dependencies }
+}
+
 /**
  * Markdown 代码导入语法解析
  * 语法：
@@ -59,106 +170,20 @@ export async function markdownImportResolve(
         return { markdown, imports: [], dependencies: [] }
     }
 
+    // 并行解析所有 import（读盘 / @doc AST），再按从后往前顺序替换，避免索引错位
+    const resolvedList = await Promise.all(matches.map((match) => resolveOneImport(match, options.filePath)))
+
     let result = markdown
     const imports: { name: string; path: string }[] = []
     const dependencies: string[] = []
 
-    // 从后往前替换，避免索引变化
-    for (let i = matches.length - 1; i >= 0; i--) {
-        const match = matches[i]
-        const rawPath = match.groups!.path1 || match.groups!.path2
-        const importPath = rawPath.slice(1, -1)
-        const args = (match.groups!.args1 || match.groups!.args2 || "").trim()
-
-        let resolvedContent = ""
-        try {
-            if (!options.filePath) {
-                throw new Error("filePath is required to resolve relative import paths")
-            }
-            const dir = path.dirname(options.filePath)
-            const absolutePath = path.resolve(dir, importPath)
-            dependencies.unshift(absolutePath)
-
-            let fileContent = await fs.readFile(absolutePath, "utf-8")
-            let ext = path.extname(absolutePath).toLowerCase()
-            let docSymbolName = getImportArgValue(args, "doc")
-            let ignoreFirstLine = false
-            if (!docSymbolName) {
-                docSymbolName = getImportArgValue(args, "doc.notitle")
-                if (docSymbolName) {
-                    ignoreFirstLine = true
-                }
-            }
-
-            if (docSymbolName) {
-                // 只有命中 @doc 时才加载 AST 文档解析逻辑，避免普通导入产生额外开销
-                const { renderImportDoc } = await import("./markdownImportDoc")
-                resolvedContent = renderImportDoc(fileContent, docSymbolName, {
-                    filePath: absolutePath,
-                    ignoreFirstLine,
-                })
-            } else if (ext === ".md") {
-                // 递归解析 Markdown 片段（不加入 imports，内容直接内联）
-                const subResult = await markdownImportResolve(fileContent, { filePath: absolutePath })
-                resolvedContent = subResult.markdown
-                if (subResult.imports) {
-                    imports.unshift(...subResult.imports)
-                }
-                if (subResult.dependencies) {
-                    dependencies.unshift(...subResult.dependencies)
-                }
-            } else {
-                const extWithoutDot = ext.slice(1) || "text" // 去掉 .
-                let finalArgs = args || ""
-
-                // 处理 @only=symbolName 的情况
-                if (/\B@only\b/.test(finalArgs) || /\b@only\b/.test(finalArgs)) {
-                    let symbolName = ""
-                    const onlyMatch = finalArgs.match(/@only\s*=\s*([^\s]+)/)
-                    if (onlyMatch) {
-                        symbolName = onlyMatch[1]
-                    }
-                    if (symbolName) {
-                        fileContent = substringJsBySymbol(fileContent, symbolName)
-                    }
-                }
-
-                if (/\B@file\b/.test(finalArgs) || /\b@file\b/.test(finalArgs)) {
-                    const baseName = path.basename(absolutePath)
-                    // If it's just @file without value, replace it
-                    if (finalArgs.match(/@file(?!\=)/)) {
-                        finalArgs = finalArgs.replace(/@file(?!\=)/g, `@file="${baseName}"`)
-                    }
-                }
-
-                if (finalArgs.includes("@raw")) {
-                    const importName = getImportName(absolutePath)
-                    imports.unshift({
-                        name: importName,
-                        path: absolutePath,
-                    })
-                    resolvedContent = `<${importName} />`
-                } else if (finalArgs.includes("@preview")) {
-                    const importName = getImportName(absolutePath)
-                    imports.unshift({
-                        name: importName,
-                        path: absolutePath,
-                    })
-                    finalArgs = `${finalArgs} @import-component="${importName}"`
-                    resolvedContent = `\`\`\`${extWithoutDot} ${finalArgs}\n${fileContent?.trim()}\n\`\`\``
-                } else {
-                    // 普通代码块，不需要加入 imports
-                    resolvedContent = `\`\`\`${extWithoutDot} ${finalArgs}\n${fileContent?.trim()}\n\`\`\``
-                }
-            }
-        } catch (error) {
-            resolvedContent = `\n> [!WARNING] Import Error\n> \`@import ${importPath}\` failed: ${
-                (error as Error).message
-            }\n`
-        }
-
-        // 替换原本的内容
-        result = result.substring(0, match.index!) + resolvedContent + result.substring(match.index! + match[0].length)
+    for (let i = resolvedList.length - 1; i >= 0; i--) {
+        const item = resolvedList[i]
+        const match = item.match
+        // 保持与原先 unshift 一致的依赖/import 顺序（后出现的 import 在前）
+        imports.unshift(...item.imports)
+        dependencies.unshift(...item.dependencies)
+        result = result.substring(0, match.index!) + item.resolvedContent + result.substring(match.index! + match[0].length)
     }
 
     // 去重，防止同一文件多次 import 导致变量名冲突
