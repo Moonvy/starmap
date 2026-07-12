@@ -11,6 +11,24 @@ export interface GlobalComponentEntry {
     importPath: string
 }
 
+/** 同一次生成流程内复用解析结果，避免 unit 生成与 global-components 重复扫盘 */
+const unitComponentsCache = new Map<string, Promise<GlobalComponentEntry[]>>()
+
+/**
+ * 使某个 CodeUnit 的组件解析缓存失效（热更新 / 强制重生成时调用）
+ * @param unit CodeUnit 实例
+ */
+export function invalidateUnitComponentsCache(unit: CodeUnit) {
+    unitComponentsCache.delete(unit.dirFullPath)
+}
+
+/**
+ * 清空全部组件解析缓存（全量重新生成前调用）
+ */
+export function clearUnitComponentsCache() {
+    unitComponentsCache.clear()
+}
+
 /**
  * 检查文件是否存在
  * @param filePath 文件绝对路径
@@ -36,6 +54,26 @@ async function fileExists(filePath: string): Promise<boolean> {
  * @returns 解析出的全局组件条目列表
  */
 export async function resolveUnitComponents(unit: CodeUnit): Promise<GlobalComponentEntry[]> {
+    const cacheKey = unit.dirFullPath
+    const cached = unitComponentsCache.get(cacheKey)
+    if (cached) return cached
+
+    const pending = resolveUnitComponentsUncached(unit)
+    unitComponentsCache.set(cacheKey, pending)
+    try {
+        return await pending
+    } catch (err) {
+        // 失败不缓存，便于下次重试
+        unitComponentsCache.delete(cacheKey)
+        throw err
+    }
+}
+
+/**
+ * 实际执行组件解析（无缓存）
+ * @param unit CodeUnit 实例
+ */
+async function resolveUnitComponentsUncached(unit: CodeUnit): Promise<GlobalComponentEntry[]> {
     // 初始化 es-module-lexer（WASM），重复调用安全
     await init
 
@@ -43,10 +81,19 @@ export async function resolveUnitComponents(unit: CodeUnit): Promise<GlobalCompo
     const dirName = unit.dirName
     const entries: GlobalComponentEntry[] = []
 
-    // 规则 1: 与文件夹同名的 .vue 文件（如 button/button.vue）
-    // 组件名是文件名（不含扩展名）
     const sameNameVuePath = path.join(dirFullPath, `${dirName}.vue`)
-    if (await fileExists(sameNameVuePath)) {
+    const indexVuePath = path.join(dirFullPath, "index.vue")
+    const indexTsPath = path.join(dirFullPath, "index.ts")
+
+    // 并行探测三个候选路径
+    const [sameNameExists, indexVueExists, indexTsExists] = await Promise.all([
+        fileExists(sameNameVuePath),
+        fileExists(indexVuePath),
+        fileExists(indexTsPath),
+    ])
+
+    // 规则 1: 与文件夹同名的 .vue 文件（如 button/button.vue）
+    if (sameNameExists) {
         entries.push({
             name: dirName,
             importPath: sameNameVuePath,
@@ -54,8 +101,7 @@ export async function resolveUnitComponents(unit: CodeUnit): Promise<GlobalCompo
     }
 
     // 规则 2: index.vue 作为全局组件，组件名是文件夹名字
-    const indexVuePath = path.join(dirFullPath, "index.vue")
-    if (await fileExists(indexVuePath)) {
+    if (indexVueExists) {
         entries.push({
             name: dirName,
             importPath: indexVuePath,
@@ -63,8 +109,7 @@ export async function resolveUnitComponents(unit: CodeUnit): Promise<GlobalCompo
     }
 
     // 规则 3: index.ts 导出分析，每个 .vue 导出都作为全局组件
-    const indexTsPath = path.join(dirFullPath, "index.ts")
-    if (await fileExists(indexTsPath)) {
+    if (indexTsExists) {
         const indexTsEntries = await resolveIndexTsExports(unit, indexTsPath)
         entries.push(...indexTsEntries)
     }

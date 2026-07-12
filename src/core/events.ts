@@ -6,7 +6,12 @@ import { Gen } from "./Gen/Gen"
 export const [StarmapCoreEvents, StarmapCoreEventDefine] = defineEvents({
     inited: <any>{},
 
-    /** 单个代码单元生成完成后触发
+    /** 全量文档生成开始时触发
+     * - 全量生成： generate -> generateUnit-> generateEnd -> generateTree-> generateDone
+     */
+    generate: <{ gen: Gen; starmapCore: StarmapCore }>{},
+
+    /** 单个代码单元生成时触发
      * - 全量生成： generate -> generateUnit-> generateEnd -> generateTree-> generateDone
      * - 单个生成： generateUnit-> generateEnd -> generateTree
      *

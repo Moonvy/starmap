@@ -5,6 +5,7 @@ import { normalizeID } from "./lib/normalizeID"
 
 import fsex from "fs-extra"
 import path from "node:path"
+import os from "node:os"
 import { readableMs, cloneDeep } from "fzz"
 import { CodeUnit } from "./CodeUnit"
 import { StarmapCoreEvents } from "../events"
@@ -14,7 +15,14 @@ import { FsTree, FsEvents } from "../FsTree/FsTree"
 import { debounce } from "es-toolkit"
 import { outputFileWithCache, outputJsonWithCache } from "../../utils/fs/outputFileWithCache"
 import { getStarmapDocPath } from "../../utils/getStarmapDocPath"
+import { mapPool } from "../../utils/async/mapPool"
 import chalk from "chalk"
+
+/** 全量生成时 CodeUnit 的并发数：兼顾 IO/CPU，避免无限制打爆磁盘与 shiki */
+function getGenerateUnitConcurrency(): number {
+    const cpuCount = os.cpus()?.length || 4
+    return Math.max(2, Math.min(8, cpuCount))
+}
 
 /** 生成器，从项目生成文档 */
 export class Gen {
@@ -43,11 +51,19 @@ export class Gen {
         // 添加所有代码单元（生成树结构）
         this.allUnits.setUnits(units)
 
+        // 通知插件全量生成开始（可用于清理轮次级缓存）
+        await this.starmapCore.eventHub.emitAsync(StarmapCoreEvents.generate, {
+            gen: this,
+            starmapCore: this.starmapCore,
+        })
+
         // 收集生成中的错误
         const errors: { unitId: string; error: Error }[] = []
 
-        // 逐个生成代码单元
-        for (let unit of this.allUnits.flat) {
+        // 并发生成代码单元（各 unit 输出路径互不冲突，可安全并行）
+        const concurrency = getGenerateUnitConcurrency()
+        let t_units0 = performance.now()
+        await mapPool(this.allUnits.flat, concurrency, async (unit) => {
             try {
                 await this.generateUnit(unit)
             } catch (err: any) {
@@ -57,7 +73,11 @@ export class Gen {
                         `${chalk.red(err.stack || err.message || err)}\n`
                 )
             }
-        }
+        })
+        let dt_units = performance.now() - t_units0
+        this.starmapCore.logger.debug(
+            `<Starmap|Gen> Generate Units: _${readableMs(dt_units)}_, concurrency *${concurrency}*`,
+        )
 
         // 生成完成事件
         await this.starmapCore.eventHub.emitAsync(StarmapCoreEvents.generateEnd, {

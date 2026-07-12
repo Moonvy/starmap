@@ -13,6 +13,7 @@ import { readableMs } from "fzz"
 import { createRootRoutesCode } from "./lib/createRootRoutesCode"
 import { createGlobalComponentsCode } from "./lib/createGlobalComponentsCode"
 import { createUnitComponentCode } from "./lib/createUnitComponentCode"
+import { invalidateUnitComponentsCache, clearUnitComponentsCache } from "./lib/resolveUnitComponents"
 import { outputReadmeVue } from "./gen/readme/outputReadmeVue"
 import { outputFileWithCache } from "../../utils/fs/outputFileWithCache"
 import { parse } from "vue-docgen-api"
@@ -34,7 +35,14 @@ export function LibraryVue(options?: {}) {
 
         // 单个代码单元生成
         core.eventHub.on(StarmapCoreEvents.generateUnit, async ({ codeUnit }) => {
+            // 热更新/重新生成时失效该 unit 的组件解析缓存
+            invalidateUnitComponentsCache(codeUnit)
             await generateCodeUnit(codeUnit, core)
+        })
+
+        // 全量生成开始时清空组件缓存，保证本轮结果一致
+        core.eventHub.on(StarmapCoreEvents.generate, async () => {
+            clearUnitComponentsCache()
         })
 
         // 全部代码单元生成完成后
@@ -50,7 +58,8 @@ export function LibraryVue(options?: {}) {
         core.eventHub.on(StarmapCoreEvents.firstGenerateDone, async () => {
             if (core.config.isBuild) {
                 await buildVite({ core })
-            } else {
+            } else if (core.config.watch !== false) {
+                // watch: false 时只生成文档，不拉起开发服务器（避免占用输出目录）
                 createViteServer({ core })
             }
         })

@@ -87,15 +87,25 @@ export class CodeUnit {
 
         this.id = id
 
-        // 解析 index.ts
+        // 并行探测目录内常见入口文件，减少串行 access 往返
         const indexTsPath = path.join(this.dirFullPath, "index.ts")
-        try {
-            await fs.access(indexTsPath)
+        const sameNameVuePath = path.join(this.dirFullPath, `${this.dirName}.vue`)
+        const indexVuePath = path.join(this.dirFullPath, "index.vue")
+        const [indexTsExists, sameNameVueExists, indexVueExists] = await Promise.all([
+            fileExists(indexTsPath),
+            fileExists(sameNameVuePath),
+            fileExists(indexVuePath),
+        ])
+
+        if (indexTsExists) {
             this.indexCodeFsNode = this.gen.starmapCore.fsTree.getOrCreateNode(indexTsPath)
-        } catch {}
+        }
 
         // 解析主组件
-        this.mainComponentFsNode = await this._resolveMainComponent()
+        this.mainComponentFsNode = await this._resolveMainComponent({
+            sameNameVuePath: sameNameVueExists ? sameNameVuePath : undefined,
+            indexVuePath: indexVueExists ? indexVuePath : undefined,
+        })
     }
 
     /** 解析代码单元目录下的主组件文件节点
@@ -104,8 +114,13 @@ export class CodeUnit {
      * 1. 若存在 index.ts 且其中有 `export { default } from "xxx.vue"`，则取该 xxx.vue
      * 2. 与文件夹同名的 vue 文件，如 button/button.vue
      * 3. index.vue
+     *
+     * @param knownPaths 已探测存在的候选路径，避免重复 access
      */
-    private async _resolveMainComponent(): Promise<FsNode | undefined> {
+    private async _resolveMainComponent(knownPaths?: {
+        sameNameVuePath?: string
+        indexVuePath?: string
+    }): Promise<FsNode | undefined> {
         const fsTree = this.gen.starmapCore.fsTree
 
         // 1. 从 index.ts 中查找 export { default } from "xxx.vue"
@@ -115,25 +130,22 @@ export class CodeUnit {
                 const match = text.match(/export\s*\{[^}]*\bdefault\b[^}]*\}\s*from\s*["']([^"']+\.vue)["']/)
                 if (match) {
                     const vuePath = path.resolve(this.dirFullPath, match[1])
-                    await fs.access(vuePath)
-                    return fsTree.getOrCreateNode(vuePath)
+                    if (await fileExists(vuePath)) {
+                        return fsTree.getOrCreateNode(vuePath)
+                    }
                 }
             } catch {}
         }
 
         // 2. 与文件夹同名的 vue 文件
-        const sameNameVuePath = path.join(this.dirFullPath, `${this.dirName}.vue`)
-        try {
-            await fs.access(sameNameVuePath)
-            return fsTree.getOrCreateNode(sameNameVuePath)
-        } catch {}
+        if (knownPaths?.sameNameVuePath) {
+            return fsTree.getOrCreateNode(knownPaths.sameNameVuePath)
+        }
 
         // 3. index.vue
-        const indexVuePath = path.join(this.dirFullPath, "index.vue")
-        try {
-            await fs.access(indexVuePath)
-            return fsTree.getOrCreateNode(indexVuePath)
-        } catch {}
+        if (knownPaths?.indexVuePath) {
+            return fsTree.getOrCreateNode(knownPaths.indexVuePath)
+        }
 
         return undefined
     }
@@ -234,6 +246,16 @@ function resolveReadmeContentMetadata(markdownContent: string): Partial<CodeUnit
     }
 
     return {}
+}
+
+/** 判断文件是否存在 */
+async function fileExists(filePath: string): Promise<boolean> {
+    try {
+        await fs.access(filePath)
+        return true
+    } catch {
+        return false
+    }
 }
 
 /** 拆分标题文本，生成主标题和副标题 */

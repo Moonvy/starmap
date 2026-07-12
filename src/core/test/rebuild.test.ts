@@ -23,6 +23,8 @@ describe("StarmapCore rebuild", () => {
         const core = new StarmapCore({
             rootPath: testRootDir,
             outputDir: testOutputDir,
+            // 不启动 watch / Vite，避免占用输出目录导致 rebuild 清理失败
+            watch: false,
         })
 
         await core.ready

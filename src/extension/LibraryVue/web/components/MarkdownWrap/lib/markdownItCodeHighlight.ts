@@ -1,6 +1,12 @@
 import { codeToHtml, ShikiTransformer } from "shiki/bundle/full"
+import { createHash } from "node:crypto"
 
 import { transformerNotationDiff } from "@shikijs/transformers"
+
+/** 相同代码块高亮结果缓存，跨 CodeUnit 复用，显著减少重复 shiki 开销 */
+const highlightResultCache = new Map<string, string>()
+/** 缓存上限，防止长时间 watch 下无限增长 */
+const HIGHLIGHT_CACHE_MAX = 500
 
 /**
  * 渲染 Markdown 代码块高亮
@@ -33,6 +39,13 @@ export async function markdownCodeHighlight(str: string, lang: string, attrs: st
     const highlightLines = parseHighlightLines(attrs)
     const lineNumbersResult = parseLineNumbers(attrs)
 
+    // 缓存键：语言 + 展示参数 + 内容哈希（避免超大字符串作 Map key）
+    const cacheKey = buildHighlightCacheKey(str, lang, rawLang, attrs, highlightLines, lineNumbersResult)
+    const cached = highlightResultCache.get(cacheKey)
+    if (cached !== undefined) {
+        return cached
+    }
+
     let html = ""
     try {
         html = await codeToHtml(str, {
@@ -41,7 +54,6 @@ export async function markdownCodeHighlight(str: string, lang: string, attrs: st
                 light: "github-light",
                 dark: "one-dark-pro",
             },
-            includeExplanation: "scopeName",
             transformers: [
                 {
                     pre(node: any) {
@@ -66,7 +78,6 @@ export async function markdownCodeHighlight(str: string, lang: string, attrs: st
                 },
                 // 行高亮 transformer：给指定行加上 highlighted class
                 createLineHighlightTransformer(highlightLines),
-                transformerSyntaxClasses,
                 transformerNotationDiff({
                     matchAlgorithm: "v3",
                 }),
@@ -76,14 +87,50 @@ export async function markdownCodeHighlight(str: string, lang: string, attrs: st
         const codeLines = str.split("\n")
         const codeSnippet = codeLines.slice(0, 5).join("\n")
         const truncated = codeLines.length > 5 ? "\n..." : ""
-        const highlightError = new Error(`Shiki 渲染代码块失败 (语言: "${lang}"): ${err.message}\n代码片段:\n${codeSnippet}${truncated}`)
+        const highlightError = new Error(
+            `Shiki 渲染代码块失败 (语言: "${lang}"): ${err.message}\n代码片段:\n${codeSnippet}${truncated}`,
+        )
         highlightError.stack = err.stack
         throw highlightError
     }
 
+    setHighlightCache(cacheKey, html)
+
     // 直接返回 shiki 的 <pre class="shiki..."> 输出
     // 以 <pre 开头，确保 markdown-it-async 的 replaceAsync 直接使用而不会再套益
     return html
+}
+
+/**
+ * 生成高亮缓存键
+ */
+function buildHighlightCacheKey(
+    str: string,
+    lang: string,
+    rawLang: string,
+    attrs: string,
+    highlightLines: Set<number>,
+    lineNumbersResult: false | true | number,
+): string {
+    const contentHash = createHash("sha1").update(str).digest("hex").slice(0, 16)
+    const linesKey =
+        highlightLines.size > 0
+            ? [...highlightLines].sort((a, b) => a - b).join(",")
+            : ""
+    return `${lang}|${rawLang}|${attrs}|ln:${String(lineNumbersResult)}|hl:${linesKey}|${contentHash}`
+}
+
+/**
+ * 写入高亮缓存，超出上限时淘汰最旧条目
+ */
+function setHighlightCache(key: string, html: string) {
+    if (highlightResultCache.size >= HIGHLIGHT_CACHE_MAX) {
+        const oldestKey = highlightResultCache.keys().next().value
+        if (oldestKey !== undefined) {
+            highlightResultCache.delete(oldestKey)
+        }
+    }
+    highlightResultCache.set(key, html)
 }
 
 /**
@@ -170,30 +217,6 @@ function createLineHighlightTransformer(lines: Set<number>): ShikiTransformer {
             }
         },
     }
-}
-
-/**
- * 一个转换器，用于提取 VS Code 语法作用域并将其转换为 CSS 类名
- */
-const transformerSyntaxClasses: ShikiTransformer = {
-    span(node, line, col, lineElement, token) {
-        // Shiki 提供 'explanation'，其中包含作用域层级
-        if (token.explanation && token.explanation.length > 0) {
-            // 取第一个（最相关的）
-            const explanation = token.explanation[0]
-
-            // 遍历作用域
-            // 最后一个通常是最具体的
-            const specificScope = explanation.scopes[explanation.scopes.length - 1].scopeName
-
-            // 清理作用域名称以作为 CSS 类名 (例如 'keyword.control.ts' -> 'sk-keyword')
-            const classBase = specificScope.split(".")[0] // 如 'keyword', 'string', 'variable'
-            const classFull = specificScope.replace(/\./g, "-") // 如 'keyword-control-ts'
-
-            this.addClassToHast(node, `sk-${classBase}`)
-            this.addClassToHast(node, `sk-${classFull}`)
-        }
-    },
 }
 
 /**

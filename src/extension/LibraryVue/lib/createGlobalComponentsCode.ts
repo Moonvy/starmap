@@ -20,10 +20,11 @@ import { resolveUnitComponents } from "./resolveUnitComponents"
  * @returns 拼接好的全局组件注册代码字符串，用于注入到 global-components.ts 模板中
  */
 export async function createGlobalComponentsCode(units: CodeUnit[]) {
+    // 并行解析各 unit 组件（内部有缓存，全量生成时多数会命中 unit 阶段结果）
+    const perUnitEntries = await Promise.all(units.map((unit) => resolveUnitComponents(unit)))
     const allEntries: string[] = []
 
-    for (const unit of units) {
-        const entries = await resolveUnitComponents(unit)
+    for (const entries of perUnitEntries) {
         for (const entry of entries) {
             allEntries.push(
                 `    {\n        name: "${entry.name}",\n        component: () => import("${entry.importPath}"),\n    }`,

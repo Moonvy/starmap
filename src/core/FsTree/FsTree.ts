@@ -2,10 +2,21 @@ import path from "node:path"
 import { FsNode } from "./FsNode"
 import { RawEvents, defineEvents } from "fzz"
 import { subscribe } from "@parcel/watcher"
-import { globSync } from "local-glob"
+import { globSync } from "tinyglobby"
 import fs from "node:fs/promises"
 import type { Stats } from "node:fs"
 import { log } from "fzz"
+
+/** scanFiles 默认忽略的目录（扫描阶段直接跳过，避免进入 node_modules 等大目录） */
+const DEFAULT_SCAN_IGNORE = [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/out/**",
+    "**/.starmap/**",
+    // 点开头目录/文件（保留 .starmap-skip 由业务逻辑处理，不在此扫描）
+    "**/.*",
+    "**/.*/**",
+]
 
 export interface IFsTreeOptions {
     watch?: boolean
@@ -53,26 +64,32 @@ export class FsTree {
         if (typeof patterns === "string") {
             patterns = [patterns]
         }
-        // 通配符模式：递归扫描文件系统，用 local-glob 匹配
+        // 使用 tinyglobby：扫描时就 ignore 大目录，避免先扫全树再过滤（Bun.Glob 不支持 ignore，会慢一个数量级）
         const rootPath = this.options.rootPath!
-        let matchedFiles: string[] = globSync(patterns, { cwd: rootPath, absolute: true })
+        const matchedFiles = globSync(patterns, {
+            cwd: rootPath,
+            absolute: true,
+            onlyFiles: true,
+            ignore: DEFAULT_SCAN_IGNORE,
+        })
 
-        // 过滤 . 开头与 node_modules 目录
-        const shouldIgnorePath = (inputPath: string) => {
-            const normalizedPath = inputPath.split(path.sep).join("/")
-            const parts = normalizedPath.split("/").filter(Boolean)
+        // 二次过滤：只根据「相对 rootPath」的路径段判断，避免 root 目录名本身叫 dist 时误杀
+        const shouldIgnoreRelativePath = (relativePath: string) => {
+            const parts = relativePath.split(/[/\\]/).filter(Boolean)
             for (const part of parts) {
-                if (part === "node_modules" || part.startsWith(".")) return true
+                if (part === "node_modules" || part === "dist" || part === "out" || part === ".starmap") return true
+                if (part.startsWith(".")) return true
             }
             return false
         }
 
-        matchedFiles = matchedFiles.filter((filePath) => !shouldIgnorePath(filePath))
-
-        return matchedFiles.map((relativePath) => {
-            const fullPath = path.resolve(rootPath, relativePath)
-            return this.getOrCreateNode(fullPath)
-        })
+        return matchedFiles
+            .map((filePath) => path.resolve(rootPath, filePath))
+            .filter((fullPath) => {
+                const relativePath = path.relative(rootPath, fullPath)
+                return relativePath !== "" && !relativePath.startsWith("..") && !shouldIgnoreRelativePath(relativePath)
+            })
+            .map((fullPath) => this.getOrCreateNode(fullPath))
     }
 
     /** 解析文件路径，返回绝对路径
