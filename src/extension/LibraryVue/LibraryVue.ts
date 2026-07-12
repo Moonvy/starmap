@@ -211,24 +211,30 @@ async function generateCodeUnit(codeUnit: CodeUnit, core: StarmapCore) {
     const { unitPath } = codeUnit
 
     let t0 = performance.now()
+    try {
+        // 输出 /units/id/metadata.ts 文件
+        const metadataTsPath = path.join(unitPath, "metadata.ts")
+        outputTemplate("unit.metadata.ts.hbs", metadataTsPath, {
+            mainComponentFsNode: !!codeUnit.mainComponentFsNode,
+        })
 
-    // 输出 /units/id/metadata.ts 文件
-    const metadataTsPath = path.join(unitPath, "metadata.ts")
-    outputTemplate("unit.metadata.ts.hbs", metadataTsPath, {
-        mainComponentFsNode: !!codeUnit.mainComponentFsNode,
-    })
+        // 输出 /units/id/readme.vue 文件
+        const readmeVuePath = path.join(unitPath, "readme.vue")
+        await outputReadmeVue(codeUnit, readmeVuePath)
 
-    // 输出 /units/id/readme.vue 文件
-    const readmeVuePath = path.join(unitPath, "readme.vue")
-    await outputReadmeVue(codeUnit, readmeVuePath)
-
-    // 输出 /units/id/unit.vue 文件
-    let unitVueCode = await createUnitComponentCode(codeUnit)
-    const unitVuePath = path.join(unitPath, "unit.vue")
-    outputTemplate("unit.vue.hbs", unitVuePath, {
-        codeUnit,
-        unitVueCode,
-    })
+        // 输出 /units/id/unit.vue 文件
+        let unitVueCode = await createUnitComponentCode(codeUnit)
+        const unitVuePath = path.join(unitPath, "unit.vue")
+        outputTemplate("unit.vue.hbs", unitVuePath, {
+            codeUnit,
+            unitVueCode,
+        })
+    } catch (err: any) {
+        const readmePath = codeUnit.readmeFsNode?.fileFullPath || "未知路径"
+        const genError = new Error(`[CodeUnit: ${codeUnit.id}] 生成失败 (Readme: ${readmePath})\n错误原因: ${err.message}`)
+        genError.stack = err.stack
+        throw genError
+    }
 
     let t1 = performance.now()
     let dt = t1 - t0

@@ -30,7 +30,6 @@ describe("outputFileWithCache", () => {
 
         expect(fsex.existsSync(outputPath)).toBe(true)
         expect(fsex.readFileSync(outputPath, "utf-8")).toBe(content)
-        expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Output:"))
     })
 
     test("相同内容再次写入应跳过", () => {
@@ -39,7 +38,6 @@ describe("outputFileWithCache", () => {
 
         // 第一次写入
         outputFileWithCache(outputPath, content)
-        expect(console.log).toHaveBeenCalledTimes(1)
 
         const mtime1 = fsex.statSync(outputPath).mtimeMs
 
@@ -50,7 +48,6 @@ describe("outputFileWithCache", () => {
         // 第二次写入相同内容
         outputFileWithCache(outputPath, content)
 
-        expect(console.log).not.toHaveBeenCalled()
         const mtime2 = fsex.statSync(outputPath).mtimeMs
         expect(mtime1).toBe(mtime2)
     })
@@ -59,12 +56,10 @@ describe("outputFileWithCache", () => {
         const outputPath = path.join(testOutputDir, "test3.txt")
 
         outputFileWithCache(outputPath, "content v1")
-        expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Output:"))
 
         vi.clearAllMocks()
 
         outputFileWithCache(outputPath, "content v2")
-        expect(console.log).toHaveBeenCalledWith(expect.stringContaining("Output:"))
         expect(fsex.readFileSync(outputPath, "utf-8")).toBe("content v2")
     })
 

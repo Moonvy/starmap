@@ -9,6 +9,7 @@ import { Gen } from "./Gen/Gen"
 
 import { LibraryVue } from "../extension/LibraryVue/LibraryVue"
 import { IStarmapExtension } from "../extension/types"
+import chalk from "chalk"
 
 /**
  * Starmap 核心实现
@@ -75,10 +76,17 @@ export class StarmapCore {
         this.eventHub.emit(StarmapCoreEvents.inited)
 
         // Build -------------------------
-        if (this.config.rebuild) {
-            await this.rebuild()
-        } else {
-            await this.build()
+        try {
+            if (this.config.rebuild) {
+                await this.rebuild()
+            } else {
+                await this.build()
+            }
+        } catch (err: any) {
+            this.logger.error(chalk.red.bold("构建过程中发生错误:"), err.stack || err.message || err)
+            if (!this.config.watch) {
+                throw err
+            }
         }
 
         this.eventHub.emit(StarmapCoreEvents.firstGenerateDone, { starmapCore: this })

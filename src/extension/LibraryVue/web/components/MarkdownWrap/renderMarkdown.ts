@@ -184,7 +184,15 @@ export async function renderMarkdown(
         filePath: options?.filePath,
     })
 
-    let html = await mdit.renderAsync(resolvedMarkdown)
+    let html = ""
+    try {
+        html = await mdit.renderAsync(resolvedMarkdown)
+    } catch (err: any) {
+        const filePathMsg = options?.filePath ? `\n文件路径: ${options.filePath}` : ""
+        const renderError = new Error(`Markdown 渲染失败: ${err.message}${filePathMsg}`)
+        renderError.stack = err.stack
+        throw renderError
+    }
 
     // 移除首个 h1 标签
     if (options?.removeFirstH1) {

@@ -1,4 +1,4 @@
-import { codeToHtml, ShikiTransformer } from "shiki"
+import { codeToHtml, ShikiTransformer } from "shiki/bundle/full"
 
 import { transformerNotationDiff } from "@shikijs/transformers"
 
@@ -29,43 +29,53 @@ export async function markdownCodeHighlight(str: string, lang: string, attrs: st
     const highlightLines = parseHighlightLines(attrs)
     const lineNumbersResult = parseLineNumbers(attrs)
 
-    const html = await codeToHtml(str, {
-        lang,
-        themes: {
-            light: "github-light",
-            dark: "one-dark-pro",
-        },
-        includeExplanation: "scopeName",
-        transformers: [
-            {
-                pre(node: any) {
-                    let displayLang = rawLang
-                    if (rawLang === "javascript") {
-                        displayLang = "js"
-                    }
-                    if (rawLang === "typescript") {
-                        displayLang = "ts"
-                    }
-
-                    node.properties["data-language"] = displayLang
-
-                    // 标记是否开启行号显示
-                    if (lineNumbersResult !== false) {
-                        node.properties["class"] = (node.properties["class"] ?? "") + " has-line-numbers"
-                        // 行号起始值，通过 CSS counter-reset 控制
-                        const startLine = lineNumbersResult === true ? 1 : lineNumbersResult
-                        node.properties["style"] = `counter-reset: line-number ${startLine - 1};`
-                    }
-                },
+    let html = ""
+    try {
+        html = await codeToHtml(str, {
+            lang,
+            themes: {
+                light: "github-light",
+                dark: "one-dark-pro",
             },
-            // 行高亮 transformer：给指定行加上 highlighted class
-            createLineHighlightTransformer(highlightLines),
-            transformerSyntaxClasses,
-            transformerNotationDiff({
-                matchAlgorithm: "v3",
-            }),
-        ],
-    })
+            includeExplanation: "scopeName",
+            transformers: [
+                {
+                    pre(node: any) {
+                        let displayLang = rawLang
+                        if (rawLang === "javascript") {
+                            displayLang = "js"
+                        }
+                        if (rawLang === "typescript") {
+                            displayLang = "ts"
+                        }
+
+                        node.properties["data-language"] = displayLang
+
+                        // 标记是否开启行号显示
+                        if (lineNumbersResult !== false) {
+                            node.properties["class"] = (node.properties["class"] ?? "") + " has-line-numbers"
+                            // 行号起始值，通过 CSS counter-reset 控制
+                            const startLine = lineNumbersResult === true ? 1 : lineNumbersResult
+                            node.properties["style"] = `counter-reset: line-number ${startLine - 1};`
+                        }
+                    },
+                },
+                // 行高亮 transformer：给指定行加上 highlighted class
+                createLineHighlightTransformer(highlightLines),
+                transformerSyntaxClasses,
+                transformerNotationDiff({
+                    matchAlgorithm: "v3",
+                }),
+            ],
+        })
+    } catch (err: any) {
+        const codeLines = str.split("\n")
+        const codeSnippet = codeLines.slice(0, 5).join("\n")
+        const truncated = codeLines.length > 5 ? "\n..." : ""
+        const highlightError = new Error(`Shiki 渲染代码块失败 (语言: "${lang}"): ${err.message}\n代码片段:\n${codeSnippet}${truncated}`)
+        highlightError.stack = err.stack
+        throw highlightError
+    }
 
     // 直接返回 shiki 的 <pre class="shiki..."> 输出
     // 以 <pre 开头，确保 markdown-it-async 的 replaceAsync 直接使用而不会再套益

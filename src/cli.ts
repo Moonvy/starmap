@@ -28,7 +28,7 @@ async function main() {
                 outputDir = path.resolve(options.outputDir)
             }
 
-            new StarmapCore({
+            const core = new StarmapCore({
                 srcDir,
                 outputDir,
                 buildDir: options.buildDir,
@@ -36,6 +36,7 @@ async function main() {
                 isBuild: true,
                 watch: false,
             })
+            await core.ready
         })
 
     cli.command("[srcDir]", "start starmap server")
@@ -61,13 +62,14 @@ async function main() {
                 }
             }
 
-            new StarmapCore({
+            const core = new StarmapCore({
                 srcDir,
                 outputDir,
                 port,
                 rebuild: options.rebuild,
                 watch: true,
             })
+            await core.ready
         })
 
     cli.help()

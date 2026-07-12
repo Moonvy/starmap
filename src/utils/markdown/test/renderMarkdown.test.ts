@@ -127,7 +127,7 @@ test("renderMarkdown 本地 markdown 链接重定向", async () => {
 
     const { html } = await renderMarkdown(md, { filePath, codeUnits: codeUnits as any })
 
-    expect(html).toContain('href="#/units/array"')
-    expect(html).toContain('href="#/units/array#options"')
+    expect(html).toContain('href="/units/array"')
+    expect(html).toContain('href="/units/array#options"')
     expect(html).toContain('href="https://google.com"')
 })

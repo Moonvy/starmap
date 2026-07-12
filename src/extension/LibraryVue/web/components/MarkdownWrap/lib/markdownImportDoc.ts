@@ -812,20 +812,20 @@ function getFunctionLike(declaration: ts.Node): ts.SignatureDeclarationBase | nu
         }
     }
 
-    if (
-        ts.isPropertyAssignment(declaration) ||
-        ts.isPropertyDeclaration(declaration) ||
-        ts.isPropertySignature(declaration)
-    ) {
+    if (ts.isPropertyAssignment(declaration) || ts.isPropertyDeclaration(declaration)) {
+        const initializer = (declaration as any).initializer
         if (
-            declaration.initializer &&
-            (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))
+            initializer &&
+            (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))
         ) {
-            return declaration.initializer
+            return initializer
         }
+    }
 
-        if (declaration.type && ts.isFunctionTypeNode(declaration.type)) {
-            return declaration.type
+    if (ts.isPropertyDeclaration(declaration) || ts.isPropertySignature(declaration)) {
+        const type = (declaration as any).type
+        if (type && ts.isFunctionTypeNode(type)) {
+            return type
         }
     }
 

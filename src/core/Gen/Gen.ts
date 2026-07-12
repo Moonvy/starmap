@@ -14,6 +14,7 @@ import { FsTree, FsEvents } from "../FsTree/FsTree"
 import { debounce } from "es-toolkit"
 import { outputFileWithCache, outputJsonWithCache } from "../../utils/fs/outputFileWithCache"
 import { getStarmapDocPath } from "../../utils/getStarmapDocPath"
+import chalk from "chalk"
 
 /** 生成器，从项目生成文档 */
 export class Gen {
@@ -42,9 +43,20 @@ export class Gen {
         // 添加所有代码单元（生成树结构）
         this.allUnits.setUnits(units)
 
+        // 收集生成中的错误
+        const errors: { unitId: string; error: Error }[] = []
+
         // 逐个生成代码单元
         for (let unit of this.allUnits.flat) {
-            await this.generateUnit(unit)
+            try {
+                await this.generateUnit(unit)
+            } catch (err: any) {
+                errors.push({ unitId: unit.id, error: err })
+                this.starmapCore.logger.error(
+                    `\n${chalk.red.bold("✖")} [CodeUnit: ${unit.id}] 生成失败!\n` +
+                        `${chalk.red(err.stack || err.message || err)}\n`
+                )
+            }
         }
 
         // 生成完成事件
@@ -63,6 +75,10 @@ export class Gen {
         this.starmapCore.logger.log(
             `<Starmap|Gen> Generate Done: _${readableMs(dt_done)}_,  total *${this.allUnits.flat.length}* units.`,
         )
+
+        if (errors.length > 0 && !this.starmapCore.config.watch) {
+            throw new Error(`构建完成，但有 ${errors.length} 个代码单元生成失败。`)
+        }
 
         await this.starmapCore.eventHub.emitAsync(StarmapCoreEvents.generateDone, {
             gen: this,
@@ -121,25 +137,32 @@ export class Gen {
 
     /** 更新生成，单个代码单元 */
     async _updateGenUnit(unit: CodeUnit) {
-        let oldId = unit.id
-        let oldMetadata = JSON.stringify(unit.metadata)
+        try {
+            let oldId = unit.id
+            let oldMetadata = JSON.stringify(unit.metadata)
 
-        // 重新读取 metadata（FsNode 缓存已由 FsTree 失效）
-        await unit.init()
+            // 重新读取 metadata（FsNode 缓存已由 FsTree 失效）
+            await unit.init()
 
-        // 检查 id 是否变化，如果 id 变化直接去全部重新生成
-        if (unit.id !== oldId) {
-            console.log(">>> unit.id changed, regenerate all")
-            await this.generate()
-            return
-        }
-        // 重新生成代码单元
-        await this.generateUnit(unit)
+            // 检查 id 是否变化，如果 id 变化直接去全部重新生成
+            if (unit.id !== oldId) {
+                console.log(">>> unit.id changed, regenerate all")
+                await this.generate()
+                return
+            }
+            // 重新生成代码单元
+            await this.generateUnit(unit)
 
-        // 更改了元数据（图标、标题等需要更新目录树）
-        if (JSON.stringify(unit.metadata) !== oldMetadata) {
-            console.log(">>> unit metadata changed, regenerate tree")
-            await this._updateGenTree()
+            // 更改了元数据（图标、标题等需要更新目录树）
+            if (JSON.stringify(unit.metadata) !== oldMetadata) {
+                console.log(">>> unit metadata changed, regenerate tree")
+                await this._updateGenTree()
+            }
+        } catch (err: any) {
+            this.starmapCore.logger.error(
+                `\n${chalk.red.bold("✖")} 更新 CodeUnit 失败: *${unit.id}*\n` +
+                    `${chalk.red(err.stack || err.message || err)}\n`
+            )
         }
     }
 
@@ -151,13 +174,20 @@ export class Gen {
 
     /** 更新生成，新增代码单元，会重新生成单元目录树，但不会重新生成代码单元 */
     async _updateGenNewUnit(fullPath: string) {
-        let readmeNode = this.starmapCore.fsTree.getOrCreateNode(fullPath)
-        if (!readmeNode) return
-        const unit = new CodeUnit(readmeNode, this)
-        await unit.ready
-        this.allUnits.addUnit(unit)
-        await this.generateUnit(unit)
-        await this._updateGenTree()
+        try {
+            let readmeNode = this.starmapCore.fsTree.getOrCreateNode(fullPath)
+            if (!readmeNode) return
+            const unit = new CodeUnit(readmeNode, this)
+            await unit.ready
+            this.allUnits.addUnit(unit)
+            await this.generateUnit(unit)
+            await this._updateGenTree()
+        } catch (err: any) {
+            this.starmapCore.logger.error(
+                `\n${chalk.red.bold("✖")} 新增 CodeUnit 失败: _${fullPath}_\n` +
+                    `${chalk.red(err.stack || err.message || err)}\n`
+            )
+        }
     }
 
     /** 初始化监听，监听文件系统变化并增量更新 CodeUnit */
@@ -345,7 +375,14 @@ export class Gen {
         /** 全量重新生成（debounced） */
         const generateDebounced = debounce(async () => {
             logger.log(`<Starmap|Watch> 🔁 执行全量重新生成`)
-            await this.generate()
+            try {
+                await this.generate()
+            } catch (err: any) {
+                logger.error(
+                    `\n${chalk.red.bold("✖")} 热更新全量重新生成失败!\n` +
+                        `${chalk.red(err.stack || err.message || err)}\n`
+                )
+            }
         }, 300)
     }
 }
