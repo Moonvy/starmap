@@ -16,12 +16,13 @@ import { debounce } from "es-toolkit"
 import { outputFileWithCache, outputJsonWithCache } from "../../utils/fs/outputFileWithCache"
 import { getStarmapDocPath } from "../../utils/getStarmapDocPath"
 import { mapPool } from "../../utils/async/mapPool"
+import { tryGetFreshUnitGenStamp } from "./lib/unitGenCache"
 import chalk from "chalk"
 
-/** 全量生成时 CodeUnit 的并发数：兼顾 IO/CPU，避免无限制打爆磁盘与 shiki */
+/** 全量生成时 CodeUnit 的并发数：cache-hit 偏 IO，可适当提高上限 */
 function getGenerateUnitConcurrency(): number {
     const cpuCount = os.cpus()?.length || 4
-    return Math.max(2, Math.min(8, cpuCount))
+    return Math.max(4, Math.min(24, cpuCount * 2))
 }
 
 /** 生成器，从项目生成文档 */
@@ -63,9 +64,13 @@ export class Gen {
         // 并发生成代码单元（各 unit 输出路径互不冲突，可安全并行）
         const concurrency = getGenerateUnitConcurrency()
         let t_units0 = performance.now()
+        let skippedCount = 0
+        let generatedCount = 0
         await mapPool(this.allUnits.flat, concurrency, async (unit) => {
             try {
-                await this.generateUnit(unit)
+                const result = await this.generateUnit(unit)
+                if (result === "skipped") skippedCount++
+                else generatedCount++
             } catch (err: any) {
                 errors.push({ unitId: unit.id, error: err })
                 this.starmapCore.logger.error(
@@ -76,7 +81,8 @@ export class Gen {
         })
         let dt_units = performance.now() - t_units0
         this.starmapCore.logger.debug(
-            `<Starmap|Gen> Generate Units: _${readableMs(dt_units)}_, concurrency *${concurrency}*`,
+            `<Starmap|Gen> Generate Units: _${readableMs(dt_units)}_, concurrency *${concurrency}*, ` +
+                `generated *${generatedCount}*, skipped *${skippedCount}*`,
         )
 
         // 生成完成事件
@@ -109,9 +115,25 @@ export class Gen {
     /**
      * 生成单个代码单元的文件
      * @param options.force 是否强制重新生成，忽略缓存
+     * @returns skipped 表示命中增量缓存未重生成；generated 表示实际执行了生成
      */
-    async generateUnit(unit: CodeUnit, options?: { force?: boolean }) {
+    async generateUnit(
+        unit: CodeUnit,
+        options?: { force?: boolean },
+    ): Promise<"skipped" | "generated"> {
         let t0 = performance.now()
+
+        // cache-hit 热路径：在写 code-unit.json / 触发插件之前短路，避免 402 个 unit 的无用 IO 与日志
+        if (!options?.force) {
+            const freshStamp = await tryGetFreshUnitGenStamp(unit)
+            if (freshStamp) {
+                unit.readmeImportDependencyPaths = freshStamp.deps || []
+                // 仅在极细粒度需要时再打开；全量 400+ unit 时逐条日志本身就是瓶颈
+                this.starmapCore.logger.debug(`<Starmap|GenUnit> *${unit.id.padEnd(18)}* skipped`)
+                return "skipped"
+            }
+        }
+
         this.starmapCore.logger.debug(`<Starmap|GenUnit> *${unit.id.padEnd(18)}* `)
         outputJsonWithCache(path.join(unit.unitPath, "code-unit.json"), unit)
         await this.starmapCore.eventHub.emitAsync(StarmapCoreEvents.generateUnit, {
@@ -125,6 +147,7 @@ export class Gen {
         let dt = t1 - t0
 
         this.starmapCore.logger.debug(`  _└_  ${readableMs(dt)}`)
+        return "generated"
     }
 
     /**

@@ -13,10 +13,28 @@ const DEFAULT_SCAN_IGNORE = [
     "**/dist/**",
     "**/out/**",
     "**/.starmap/**",
+    // Rust / Cargo 构建与依赖缓存（真实 monorepo 常把 cargo-home 放在 vendor 下，含大量 crate readme）
+    "**/cargo-home/**",
+    "**/target/**",
+    "**/.cargo/**",
+    "**/registry/src/**",
+    "**/registry/cache/**",
+    "**/index.crates.io*/**",
     // 点开头目录/文件（保留 .starmap-skip 由业务逻辑处理，不在此扫描）
     "**/.*",
     "**/.*/**",
 ]
+
+/** 路径段级忽略名（相对 root 的二次过滤，与 glob ignore 互补） */
+const IGNORE_PATH_SEGMENTS = new Set([
+    "node_modules",
+    "dist",
+    "out",
+    ".starmap",
+    "cargo-home",
+    "target",
+    ".cargo",
+])
 
 export interface IFsTreeOptions {
     watch?: boolean
@@ -77,9 +95,13 @@ export class FsTree {
         const shouldIgnoreRelativePath = (relativePath: string) => {
             const parts = relativePath.split(/[/\\]/).filter(Boolean)
             for (const part of parts) {
-                if (part === "node_modules" || part === "dist" || part === "out" || part === ".starmap") return true
+                if (IGNORE_PATH_SEGMENTS.has(part)) return true
+                // crates.io registry 源码目录名形如 index.crates.io-xxxxx
+                if (part.startsWith("index.crates.io")) return true
                 if (part.startsWith(".")) return true
             }
+            // registry/src 与 registry/cache 整段跳过
+            if (parts.includes("registry") && (parts.includes("src") || parts.includes("cache"))) return true
             return false
         }
 
@@ -212,24 +234,32 @@ export class FsTree {
         ignorePatterns: string[]
         ignoreMatcher: (path: string) => boolean
     } {
-        // 默认忽略 node_modules, dist, out, .starmap，以及 . 开头的目录/文件
+        // 默认忽略 node_modules / 构建产物 / cargo 缓存，以及 . 开头的目录/文件
         const defaultIgnorePatterns = [
             "**/node_modules/**",
             "**/dist/**",
             "**/out/**",
             "**/.starmap/**",
+            "**/cargo-home/**",
+            "**/target/**",
+            "**/.cargo/**",
+            "**/registry/src/**",
+            "**/registry/cache/**",
+            "**/index.crates.io*/**",
             "**/.*",
             "**/.*/**",
         ]
 
-        const ignoreNames = new Set(["node_modules", "dist", "out", ".starmap"])
+        const ignoreNames = new Set(["node_modules", "dist", "out", ".starmap", "cargo-home", "target", ".cargo"])
         const defaultIgnoreMatcher = (inputPath: string) => {
             const normalizedPath = inputPath.split(path.sep).join("/")
             const parts = normalizedPath.split("/").filter(Boolean)
             for (const part of parts) {
                 if (ignoreNames.has(part)) return true
+                if (part.startsWith("index.crates.io")) return true
                 if (part.startsWith(".") && part !== ".starmap-skip") return true
             }
+            if (parts.includes("registry") && (parts.includes("src") || parts.includes("cache"))) return true
             return false
         }
 

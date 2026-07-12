@@ -1,6 +1,6 @@
 import path from "node:path"
 import fs from "node:fs/promises"
-import { CodeUnit } from "../../../core/Gen/CodeUnit"
+import { CodeUnit } from "../CodeUnit"
 import { outputFileWithCache } from "../../../utils/fs/outputFileWithCache"
 
 /**
@@ -82,47 +82,12 @@ export async function readUnitGenStamp(unit: CodeUnit): Promise<IUnitGenStamp | 
 }
 
 /**
- * 判断关键关键输出文件是否存在
- * @param unit CodeUnit
- */
-async function unitOutputsExist(unit: CodeUnit): Promise<boolean> {
-    const required = [
-        path.join(unit.unitPath, "readme.vue"),
-        path.join(unit.unitPath, "unit.vue"),
-        path.join(unit.unitPath, "metadata.ts"),
-    ]
-    const flags = await Promise.all(
-        required.map(async (p) => {
-            try {
-                await fs.access(p)
-                return true
-            } catch {
-                return false
-            }
-        }),
-    )
-    return flags.every(Boolean)
-}
-
-/**
- * 判断 inputs 是否与 stamp 完全一致
- * @param current 当前 mtime 映射
- * @param stamped stamp 中的 mtime 映射
- */
-function inputsMatch(current: Record<string, number>, stamped: Record<string, number>): boolean {
-    const currentKeys = Object.keys(current)
-    const stampedKeys = Object.keys(stamped)
-    if (currentKeys.length !== stampedKeys.length) return false
-    for (const key of currentKeys) {
-        if (stamped[key] !== current[key]) return false
-    }
-    return true
-}
-
-/**
  * 若 unit 输出仍新鲜则可跳过重新生成
  *
- * 检查：stamp 版本、全部 inputs mtime（核心入口 + @import 依赖）、输出文件是否齐全
+ * 热路径（cache hit）只做：
+ * 1. 读 stamp
+ * 2. 并行 stat 全部 inputs + 哨兵输出 readme.vue
+ * 避免 3 次 access + 重复 core mtime 收集
  *
  * @param unit CodeUnit
  * @returns 可跳过时返回 stamp（用于恢复 deps），否则 null
@@ -131,21 +96,29 @@ export async function tryGetFreshUnitGenStamp(unit: CodeUnit): Promise<IUnitGenS
     const stamp = await readUnitGenStamp(unit)
     if (!stamp) return null
 
-    if (!(await unitOutputsExist(unit))) return null
+    const inputPaths = Object.keys(stamp.inputs)
+    const readmeVuePath = path.join(unit.unitPath, "readme.vue")
 
-    // 当前核心入口必须都能对上 stamp（防止新增 index.ts / 主组件后仍命中旧缓存）
-    const coreInputs = await collectUnitCoreInputMtimes(unit)
-    for (const [filePath, mtime] of Object.entries(coreInputs)) {
-        if (stamp.inputs[filePath] !== mtime) return null
-    }
+    // 一次并行：所有输入 mtime + 关键输出是否存在
+    const [inputMtimes, readmeVueMtime, coreInputs] = await Promise.all([
+        Promise.all(inputPaths.map((p) => safeMtime(p))),
+        safeMtime(readmeVuePath),
+        collectUnitCoreInputMtimes(unit),
+    ])
 
-    // stamp 记录的所有输入文件 mtime 必须仍然一致
-    const checkPaths = Object.keys(stamp.inputs)
-    const checkMtimes = await Promise.all(checkPaths.map((p) => safeMtime(p)))
-    for (let i = 0; i < checkPaths.length; i++) {
-        if (checkMtimes[i] == null || checkMtimes[i] !== stamp.inputs[checkPaths[i]]) {
+    // 输出被删则失效
+    if (readmeVueMtime == null) return null
+
+    // stamp 内全部输入 mtime 一致
+    for (let i = 0; i < inputPaths.length; i++) {
+        if (inputMtimes[i] == null || inputMtimes[i] !== stamp.inputs[inputPaths[i]]) {
             return null
         }
+    }
+
+    // 当前核心入口必须都能对上 stamp（防止新增 index.ts / 主组件后仍命中旧缓存）
+    for (const [filePath, mtime] of Object.entries(coreInputs)) {
+        if (stamp.inputs[filePath] !== mtime) return null
     }
 
     return stamp

@@ -9,7 +9,7 @@ import {
     writeUnitGenStamp,
     readUnitGenStamp,
 } from "../unitGenCache"
-import type { CodeUnit } from "../../../../core/Gen/CodeUnit"
+import type { CodeUnit } from "../../CodeUnit"
 
 const tmpRoot = path.resolve(__dirname, "./tmp-unit-gen-cache")
 
