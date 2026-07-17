@@ -634,3 +634,44 @@ test("当返回值是 unknown 且无 @returns 注释时，不应显示 returns �
     const result = renderImportDoc(source, "toUUID")
     expect(result).not.toContain("returns-json=")
 })
+
+test("从 enum 注释生成文档和成员表格", () => {
+    const source = [
+        "/**",
+        " * SegmentType",
+        " * 日志段落类型。",
+        " */",
+        "export enum SegmentType {",
+        "    /** 英雄 */",
+        "    Hero = 'Hero',",
+        "    /** 警告 */",
+        "    HeroWarn = 'HeroWarn',",
+        "    /** 默认数值枚举成员 */",
+        "    DefaultVal,",
+        "}",
+    ].join("\n")
+
+    const result = renderImportDoc(source, "SegmentType")
+
+    expect(result).toContain("日志段落类型。")
+    expect(result).toContain("<StarmapDocParams")
+    expect(result).toContain('params-label="Members"')
+    expect(getParamsJson(result)).toMatchObject([
+        { name: "Hero = 'Hero'", type: "", description: "英雄" },
+        { name: "HeroWarn = 'HeroWarn'", type: "", description: "警告" },
+        { name: "DefaultVal", type: "", description: "默认数值枚举成员" },
+    ])
+})
+
+test("从 enum 成员精确匹配生成文档", () => {
+    const source = [
+        "export enum SegmentType {",
+        "    /** 英雄类型说明 */",
+        "    Hero = 'Hero',",
+        "}",
+    ].join("\n")
+
+    const result = renderImportDoc(source, "SegmentType.Hero")
+    expect(result).toContain("英雄类型说明")
+})
+

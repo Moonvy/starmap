@@ -81,8 +81,29 @@ function renderSingleMatch(match: SymbolMatch, options: ImportDocOptions, contex
         paramComments: docs.paramComments,
         returnComment: docs.returnComment,
     }
-    const params = getParamDocs(match.declaration, localContext)
+    let params = getParamDocs(match.declaration, localContext)
     const returnDoc = getReturnDoc(match.declaration, localContext)
+    let paramsLabel: string | undefined
+
+    if (ts.isEnumDeclaration(match.declaration)) {
+        params = match.declaration.members.map((member) => {
+            const memberName = getPropertyNameText(member.name, match.sourceFile)
+            const initializer = member.initializer
+            let displayName = memberName
+            if (initializer) {
+                displayName = `${memberName} = ${initializer.getText(match.sourceFile)}`
+            }
+
+            const memberDocs = getDocParts(member, match.sourceFile, match.code, false)
+            return {
+                name: displayName,
+                type: "",
+                description: memberDocs.description || "",
+            }
+        })
+        paramsLabel = "Members"
+    }
+
     const blocks: string[] = []
 
     if (docs.description) {
@@ -90,7 +111,7 @@ function renderSingleMatch(match: SymbolMatch, options: ImportDocOptions, contex
     }
 
     if (params.length > 0 || returnDoc) {
-        blocks.push(renderParamsComponent(params, returnDoc))
+        blocks.push(renderParamsComponent(params, returnDoc, paramsLabel))
     }
 
     if (docs.examples && docs.examples.length > 0) {
@@ -261,6 +282,21 @@ function findChildMatch(parentMatch: SymbolMatch, partName: string): SymbolMatch
 
     // 检查 Class/Interface 的成员
     if (ts.isClassDeclaration(decl) || ts.isInterfaceDeclaration(decl)) {
+        for (const member of decl.members) {
+            if (member.name && getPropertyNameText(member.name, parentMatch.sourceFile) === partName) {
+                return {
+                    docNode: member,
+                    declaration: member,
+                    sourceFile: parentMatch.sourceFile,
+                    code: parentMatch.code,
+                    filePath: parentMatch.filePath,
+                }
+            }
+        }
+    }
+
+    // 检查 Enum 的成员
+    if (ts.isEnumDeclaration(decl)) {
         for (const member of decl.members) {
             if (member.name && getPropertyNameText(member.name, parentMatch.sourceFile) === partName) {
                 return {
@@ -1021,10 +1057,12 @@ function getMemberComment(member: ts.PropertySignature | ts.MethodSignature, sou
  *
  * @param params 参数文档列表
  * @param returnDoc 返回值文档
+ * @param paramsLabel 自定义参数列表标签
  */
-function renderParamsComponent(params: ParamDoc[], returnDoc: ReturnDoc | null): string {
+function renderParamsComponent(params: ParamDoc[], returnDoc: ReturnDoc | null, paramsLabel?: string): string {
     const returnsAttr = returnDoc ? ` returns-json="${escapeHtmlAttribute(JSON.stringify(returnDoc))}"` : ""
-    return `<StarmapDocParams params-json="${escapeHtmlAttribute(JSON.stringify(params))}"${returnsAttr} />`
+    const labelAttr = paramsLabel ? ` params-label="${escapeHtmlAttribute(paramsLabel)}"` : ""
+    return `<StarmapDocParams params-json="${escapeHtmlAttribute(JSON.stringify(params))}"${returnsAttr}${labelAttr} />`
 }
 
 /** 转义 HTML 属性内容

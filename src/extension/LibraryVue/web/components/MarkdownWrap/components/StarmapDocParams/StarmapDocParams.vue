@@ -1,7 +1,7 @@
 <template>
     <div v-if="params.length > 0 || returnDoc" class="StarmapDocParams">
         <div v-if="params.length > 0" class="section-label">
-            Params <span class="sub-label">({{ params.length }})</span>
+            {{ paramsLabel }} <span class="sub-label">({{ params.length }})</span>
         </div>
 
         <div v-if="params.length > 0" class="params-panel">
@@ -495,6 +495,10 @@ export default defineComponent({
         paramsJson: {
             type: String,
             default: "[]",
+        },
+        paramsLabel: {
+            type: String,
+            default: "Params",
         },
         returnsJson: {
             type: String,

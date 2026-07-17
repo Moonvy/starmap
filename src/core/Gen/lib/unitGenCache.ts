@@ -7,7 +7,7 @@ import { outputFileWithCache } from "../../../utils/fs/outputFileWithCache"
  * 单元生成缓存版本号
  * 渲染逻辑 / 模板变更时递增，强制失效旧 stamp
  */
-export const UNIT_GEN_CACHE_VERSION = 2
+export const UNIT_GEN_CACHE_VERSION = 3
 
 /** 单元生成输入指纹（落盘到 unit 输出目录） */
 export interface IUnitGenStamp {

@@ -21,3 +21,9 @@ declare module "*.vue" {
 declare module "*.css"
 declare module "@fontsource-variable/*"
 declare module "@fontsource/*"
+
+declare module "*.svg" {
+    const content: string
+    export default content
+}
+
