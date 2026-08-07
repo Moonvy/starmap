@@ -27,7 +27,7 @@ body {
     --starmap-base-font: "Plus Jakarta Sans", sans-serif, "SF Pro Text";
     --starmap-content-font: "Inter", sans-serif, "SF Pro Text";
     --starmap-head-font: "Plus Jakarta Sans", sans-serif, "SF Pro Text";
-    --starmap-code-font: "Roboto Mono", monospace, "SF Pro Text";
+    --starmap-code-font: "Roboto Mono", "PingFangSC-Regular-Mono1200", monospace, "SF Pro Text";
 
     --starmap-control-bk: rgb(235 238 245);
     --starmap-code-bk: rgb(232 236 244);

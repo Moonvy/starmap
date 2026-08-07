@@ -472,6 +472,7 @@
             color: inherit;
             font-size: inherit;
             border-radius: 0;
+            font-family: var(--md-code-font);
         }
 
         .highlighted-word {
