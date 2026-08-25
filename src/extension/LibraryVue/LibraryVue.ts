@@ -14,7 +14,7 @@ import { createRootRoutesCode } from "./lib/createRootRoutesCode"
 import { createGlobalComponentsCode } from "./lib/createGlobalComponentsCode"
 import { createUnitComponentCode } from "./lib/createUnitComponentCode"
 import { invalidateUnitComponentsCache } from "./lib/resolveUnitComponents"
-import { tryGetFreshUnitGenStamp, writeUnitGenStamp } from "../../core/Gen/lib/unitGenCache"
+import { writeUnitGenStamp } from "../../core/Gen/lib/unitGenCache"
 import { outputReadmeVue } from "./gen/readme/outputReadmeVue"
 import { outputFileWithCache } from "../../utils/fs/outputFileWithCache"
 import { ensureShikiHighlighter } from "./web/components/MarkdownWrap/lib/markdownItCodeHighlight"
@@ -35,9 +35,9 @@ export function LibraryVue(options?: {}) {
     return function extension(core: StarmapCore) {
         core.logger.debug("<LibraryVue|init> start.")
 
-        // 单个代码单元生成
-        core.eventHub.on(StarmapCoreEvents.generateUnit, async ({ codeUnit, force }) => {
-            await generateCodeUnit(codeUnit, core, { force })
+        // 单个代码单元生成（Gen.generateUnit 已做过增量缓存短路，只有需要真正生成的 unit 会到达这里）
+        core.eventHub.on(StarmapCoreEvents.generateUnit, async ({ codeUnit }) => {
+            await generateCodeUnit(codeUnit, core)
         })
 
         // 全量生成开始：预热 Shiki（真正重新生成的 unit 会单独 invalidate 组件缓存）
@@ -133,10 +133,18 @@ async function generateCodeRoot(core: StarmapCore) {
     // 必要时触发依赖安装，确保输出目录的依赖完备
     await ensureDependencies(core)
 
-    /** 复制 web/public 下的文件到 outputDir(.starmap) */
+    /** 复制 web/public 下的文件到 outputDir(.starmap)
+     *  静态资源进程内只需复制一次：以输出目录中一个已知文件作为标记，
+     *  避免每次树更新都全量 copySync（rebuild 清空输出目录后标记缺失会自动重新复制）
+     */
     function copyAssets() {
         let publicDir = path.join(getLibraryVueRoot(), "web/public")
         let outputPublicDir = path.join(core.config.outputDir!)
+
+        const markerPath = path.join(outputPublicDir, "assets", "starmap-icon.svg")
+        if (fsExtra.existsSync(markerPath)) {
+            return
+        }
 
         fsExtra.copySync(publicDir, outputPublicDir)
         core.logger.debug("<LibraryVue|copyAssets>", { publicDir, outputPublicDir })
@@ -219,24 +227,15 @@ async function ensureDependencies(core: StarmapCore) {
 /** 生成单个 CodeUnit
  * @param codeUnit 代码单元
  * @param core StarmapCore
- * @param options.force 强制重新生成，忽略增量缓存
  */
 async function generateCodeUnit(
     codeUnit: CodeUnit,
     core: StarmapCore,
-    options?: { force?: boolean },
 ) {
     const { unitPath } = codeUnit
 
-    // 增量跳过：输入未变且输出齐全时，只恢复热更新依赖列表
-    if (!options?.force) {
-        const freshStamp = await tryGetFreshUnitGenStamp(codeUnit)
-        if (freshStamp) {
-            codeUnit.readmeImportDependencyPaths = freshStamp.deps || []
-            core.logger.debug(`  _├_  skipped (cache hit)`)
-            return
-        }
-    }
+    // 注：Gen.generateUnit 已做过增量缓存短路（命中时不会发出 generateUnit 事件），
+    // 能到达这里的都是需要真正重新生成的 unit，无需再次检查 stamp
 
     // 真正重新生成前再失效组件解析缓存
     invalidateUnitComponentsCache(codeUnit)

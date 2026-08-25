@@ -4,6 +4,7 @@ import { RawEvents, defineEvents } from "fzz"
 import { subscribe } from "@parcel/watcher"
 import { globSync } from "tinyglobby"
 import fs from "node:fs/promises"
+import fsSync from "node:fs"
 import type { Stats } from "node:fs"
 import { log } from "fzz"
 
@@ -42,6 +43,24 @@ export interface IFsTreeOptions {
     rootPath?: string
     /** ignored 规则，支持 glob 或函数 */
     ignored?: string | string[] | ((path: string) => boolean)
+    /** 扫描结果磁盘缓存文件路径（可选）：跨进程复用扫描结果，避免每次启动都全量 glob 扫描 */
+    scanCacheFile?: string
+}
+
+/** 扫描结果磁盘缓存格式（scanFiles 结果的跨进程持久化） */
+interface IScanDiskCache {
+    /** 缓存格式版本，扫描逻辑 / ignore 规则变化时递增 */
+    v: number
+    /** 绑定的根路径（绝对路径） */
+    rootPath: string
+    /** 绑定的 pattern 列表 */
+    patterns: string[]
+    /** 绑定的 ignore 列表 */
+    ignore: string[]
+    /** 匹配到的文件（相对 rootPath，/ 分隔）与 mtime */
+    entries: { rel: string; mtime: number }[]
+    /** 所有匹配文件所在目录 + root 本身（相对 rootPath，/ 分隔）与 mtime */
+    dirs: { rel: string; mtime: number }[]
 }
 
 /**
@@ -49,6 +68,8 @@ export interface IFsTreeOptions {
  *
  */
 export class FsTree {
+    /** 扫描结果磁盘缓存版本号（扫描逻辑 / ignore 规则变化时递增） */
+    private static readonly SCAN_CACHE_VERSION = 1
     /** 文件系统事件
      *  事件名是 fileRelativePath ，根据 fileRelativePath 就可以监听一个文件的变化，再通过
      *  事件数据获取事件类型
@@ -56,6 +77,10 @@ export class FsTree {
     fsEvent = new RawEvents<typeof FsEventDefine>()
     /** 文件节点映射表，key 为文件绝对路径 */
     private nodeMap: Map<string, FsNode> = new Map()
+    /** 扫描结果缓存：pattern 集合 → 匹配的 FsNode 列表（仅 watch 模式启用，由 watcher 的增删事件失效） */
+    private scanCache = new Map<string, FsNode[]>()
+    /** 扫描结果磁盘缓存路径（跨进程复用，避免每次启动都全量 glob） */
+    private scanCacheFilePath?: string
     /** 选项 */
     options: IFsTreeOptions
     constructor(
@@ -65,6 +90,7 @@ export class FsTree {
         options?: IFsTreeOptions,
     ) {
         this.options = Object.assign({ rootPath }, options)
+        this.scanCacheFilePath = this.options.scanCacheFile
         if (this.options.watch) {
             this._watch()
         }
@@ -82,8 +108,26 @@ export class FsTree {
         if (typeof patterns === "string") {
             patterns = [patterns]
         }
-        // 使用 tinyglobby：扫描时就 ignore 大目录，避免先扫全树再过滤（Bun.Glob 不支持 ignore，会慢一个数量级）
         const rootPath = this.options.rootPath!
+        // watch 模式下复用扫描结果：由 watcher 的 新增/删除 事件失效，避免每次全量生成都重扫整棵目录树
+        // （update 事件不影响扫描结果，无需失效）
+        if (this.options.watch) {
+            const cacheKey = patterns.join("\u0000")
+            const cached = this.scanCache.get(cacheKey)
+            if (cached) return cached
+        }
+        // 磁盘缓存（跨进程复用）：目录与文件 mtime 全部一致则直接复用，避免冷启动全量 glob
+        if (this.scanCacheFilePath) {
+            const cachedNodes = this._loadScanDiskCache(patterns, rootPath)
+            if (cachedNodes) {
+                // 同时填充内存缓存，避免 watch 模式下后续全量重生成重复做磁盘校验
+                if (this.options.watch) {
+                    this.scanCache.set(patterns.join("\u0000"), cachedNodes)
+                }
+                return cachedNodes
+            }
+        }
+        // 使用 tinyglobby：扫描时就 ignore 大目录，避免先扫全树再过滤（Bun.Glob 不支持 ignore，会慢一个数量级）
         const matchedFiles = globSync(patterns, {
             cwd: rootPath,
             absolute: true,
@@ -105,13 +149,117 @@ export class FsTree {
             return false
         }
 
-        return matchedFiles
+        const nodes = matchedFiles
             .map((filePath) => path.resolve(rootPath, filePath))
             .filter((fullPath) => {
                 const relativePath = path.relative(rootPath, fullPath)
                 return relativePath !== "" && !relativePath.startsWith("..") && !shouldIgnoreRelativePath(relativePath)
             })
             .map((fullPath) => this.getOrCreateNode(fullPath))
+
+        // 写入磁盘缓存（失败不影响主流程）
+        if (this.scanCacheFilePath) {
+            this._saveScanDiskCache(patterns, nodes)
+        }
+        // watch 模式下缓存扫描结果
+        if (this.options.watch) {
+            this.scanCache.set(patterns.join("\u0000"), nodes)
+        }
+        return nodes
+    }
+
+    // ----------------------------
+    // 扫描结果磁盘缓存（跨进程复用）
+    // ----------------------------
+
+    /**
+     * 从磁盘缓存恢复扫描结果
+     *
+     * 校验策略（全部一致才算命中）：
+     * - 根路径 / pattern / ignore 绑定一致
+     * - 所有缓存目录的 mtime 一致（新增/删除文件会使所在目录 mtime 变化，任何新目录的创建都会
+     *   最终反映在某个已缓存目录或 root 的 mtime 上）
+     * - 所有缓存文件的 mtime 一致（内容更新会使文件 mtime 变化）
+     *
+     * @param patterns 扫描 pattern 列表
+     * @param rootPath 项目根路径
+     * @returns 命中时返回 FsNode 列表，否则 null
+     */
+    private _loadScanDiskCache(patterns: string[], rootPath: string): FsNode[] | null {
+        try {
+            const raw = fsSync.readFileSync(this.scanCacheFilePath!, "utf-8")
+            const cache = JSON.parse(raw) as IScanDiskCache
+
+            if (cache.v !== FsTree.SCAN_CACHE_VERSION) return null
+            if (path.resolve(cache.rootPath) !== path.resolve(rootPath)) return null
+            if (JSON.stringify(cache.patterns) !== JSON.stringify(patterns)) return null
+            if (JSON.stringify(cache.ignore) !== JSON.stringify(DEFAULT_SCAN_IGNORE)) return null
+
+            // 校验目录 mtime（新增/删除会使目录 mtime 变化）
+            for (const dir of cache.dirs) {
+                const stat = this._safeStatSync(path.join(rootPath, dir.rel.split("/").join(path.sep)))
+                if (!stat || !stat.isDirectory() || stat.mtimeMs !== dir.mtime) return null
+            }
+            // 校验文件 mtime（内容更新会使文件 mtime 变化）
+            for (const entry of cache.entries) {
+                const stat = this._safeStatSync(path.join(rootPath, entry.rel.split("/").join(path.sep)))
+                if (!stat || !stat.isFile() || stat.mtimeMs !== entry.mtime) return null
+            }
+
+            return cache.entries.map((entry) =>
+                this.getOrCreateNode(path.join(rootPath, entry.rel.split("/").join(path.sep))),
+            )
+        } catch {
+            return null
+        }
+    }
+
+    /** 把扫描结果写入磁盘缓存（写入失败静默，不影响主流程）
+     * @param patterns 扫描 pattern 列表
+     * @param nodes 扫描到的 FsNode 列表
+     */
+    private _saveScanDiskCache(patterns: string[], nodes: FsNode[]) {
+        try {
+            const rootPath = this.options.rootPath!
+            const toPosix = (input: string) => input.split(path.sep).join("/")
+
+            const dirSet = new Set<string>(["."])
+            const entries = nodes.map((node) => {
+                const rel = toPosix(path.relative(rootPath, node.fileFullPath))
+                dirSet.add(toPosix(path.dirname(node.fileFullPath)))
+                const stat = this._safeStatSync(node.fileFullPath)
+                return { rel, mtime: stat?.mtimeMs ?? 0 }
+            })
+
+            const dirs = Array.from(dirSet).map((dirFullPath) => {
+                const rel = toPosix(path.relative(rootPath, dirFullPath)) || "."
+                const stat = this._safeStatSync(dirFullPath)
+                return { rel, mtime: stat?.mtimeMs ?? 0 }
+            })
+
+            const cache: IScanDiskCache = {
+                v: FsTree.SCAN_CACHE_VERSION,
+                rootPath: path.resolve(rootPath),
+                patterns,
+                ignore: [...DEFAULT_SCAN_IGNORE],
+                entries,
+                dirs,
+            }
+
+            fsSync.mkdirSync(path.dirname(this.scanCacheFilePath!), { recursive: true })
+            fsSync.writeFileSync(this.scanCacheFilePath!, JSON.stringify(cache))
+        } catch {
+            // 写入失败静默
+        }
+    }
+
+    /** 安全读取文件信息（同步），读取失败时返回 null */
+    private _safeStatSync(filePath: string): Stats | null {
+        try {
+            return fsSync.statSync(filePath)
+        } catch {
+            return null
+        }
     }
 
     /** 解析文件路径，返回绝对路径
@@ -157,42 +305,45 @@ export class FsTree {
                     return
                 }
 
-                for (const event of events) {
-                    const fullPath = event.path
-                    if (ignoreMatcher(fullPath)) continue
+                // 过滤被忽略的事件
+                const filteredEvents = events.filter((event) => !ignoreMatcher(event.path))
+                if (filteredEvents.length === 0) return
 
+                // 新增/删除属于目录结构变化，会使扫描缓存失效（update 不影响扫描结果）
+                const hasStructuralChange = filteredEvents.some(
+                    (event) => event.type === "create" || event.type === "delete",
+                )
+                if (hasStructuralChange) {
+                    this.scanCache.clear()
+                }
+
+                // 分类事件：update（含 createAsUpdate）/ add / delete / deleteDir
+                const updateItems: { fullPath: string; relativePath: string; node: FsNode | undefined; isCreate: boolean }[] =
+                    []
+                const addItems: { fullPath: string; relativePath: string }[] = []
+                const deleteItems: { fullPath: string; relativePath: string }[] = []
+                const deleteDirItems: { fullPath: string; relativePath: string }[] = []
+
+                for (const event of filteredEvents) {
+                    const fullPath = event.path
                     const relativePath = path.relative(rootPath, fullPath).split(path.sep).join("/")
 
                     if (event.type === "update") {
                         log("<FsTree|watch|fileChanged>", relativePath)
-                        const node = this.nodeMap.get(fullPath)
-                        if (node) {
-                            const stats = await this._safeStat(fullPath)
-                            if (stats) {
-                                node.changeCache(stats.mtimeMs)
-                            }
-                        }
-                        this.fsEvent.emit(FsEvents.update, { fullPath, relativePath })
+                        updateItems.push({ fullPath, relativePath, node: this.nodeMap.get(fullPath), isCreate: false })
                         continue
                     }
 
                     if (event.type === "create") {
-                        if (this.nodeMap.has(fullPath)) {
+                        const node = this.nodeMap.get(fullPath)
+                        if (node) {
                             // 如果已经存在，说明是覆盖或者快速重建，按 update 处理
                             log("<FsTree|watch|fileChanged|createAsUpdate>", relativePath)
-                            const node = this.nodeMap.get(fullPath)
-                            if (node) {
-                                const stats = await this._safeStat(fullPath)
-                                if (stats) {
-                                    node.changeCache(stats.mtimeMs)
-                                }
-                            }
-                            this.fsEvent.emit(FsEvents.update, { fullPath, relativePath })
-                            continue
+                            updateItems.push({ fullPath, relativePath, node, isCreate: true })
+                        } else {
+                            console.log("<FsTree|_watch> file added:", relativePath)
+                            addItems.push({ fullPath, relativePath })
                         }
-
-                        console.log("<FsTree|_watch> file added:", relativePath)
-                        this.fsEvent.emit(FsEvents.add, { fullPath, relativePath })
                         continue
                     }
 
@@ -215,12 +366,34 @@ export class FsTree {
 
                         if (isDir) {
                             console.log("<FsTree|_watch> dir delete:", relativePath)
-                            this.fsEvent.emit(FsEvents.deleteDir, { fullPath, relativePath })
+                            deleteDirItems.push({ fullPath, relativePath })
                         } else {
                             console.log("<FsTree|_watch> file delete:", relativePath)
-                            this.fsEvent.emit(FsEvents.delete, { fullPath, relativePath })
+                            deleteItems.push({ fullPath, relativePath })
                         }
                     }
+                }
+
+                // 批量 stat（并行）再统一失效缓存 + 发事件，避免大批次变更时逐个串行等待
+                // 注意：即使 nodeMap 中尚无节点，也要通过 getOrCreateNode 拿到与 CodeUnit 共用的 FsNode 并失效缓存
+                // （CodeUnit.readmeFsNode 与 nodeMap 共享同一实例，必须在此清掉，否则热更新会读到旧 readme）
+                const stats = await Promise.all(updateItems.map((item) => this._safeStat(item.fullPath)))
+                for (let i = 0; i < updateItems.length; i++) {
+                    const item = updateItems[i]
+                    const itemStats = stats[i]
+                    const node = item.node ?? this.getOrCreateNode(item.fullPath)
+                    // 信任 watcher：有变更事件就失效缓存（mtime 仅作参考；stat 失败也失效）
+                    node.changeCache(itemStats?.mtimeMs ?? Date.now())
+                    this.fsEvent.emit(FsEvents.update, { fullPath: item.fullPath, relativePath: item.relativePath })
+                }
+                for (const item of addItems) {
+                    this.fsEvent.emit(FsEvents.add, item)
+                }
+                for (const item of deleteItems) {
+                    this.fsEvent.emit(FsEvents.delete, item)
+                }
+                for (const item of deleteDirItems) {
+                    this.fsEvent.emit(FsEvents.deleteDir, item)
                 }
             },
             { ignore: ignorePatterns },
@@ -234,7 +407,8 @@ export class FsTree {
         ignorePatterns: string[]
         ignoreMatcher: (path: string) => boolean
     } {
-        // 默认忽略 node_modules / 构建产物 / cargo 缓存，以及 . 开头的目录/文件
+        // 默认忽略 node_modules / 构建产物 / cargo 缓存，以及 VCS 等大体积点目录
+        // 注意：不能用 **/.* 一刀切，否则 .starmap-skip（触发全量重新生成的功能）的事件会被原生层过滤掉
         const defaultIgnorePatterns = [
             "**/node_modules/**",
             "**/dist/**",
@@ -246,8 +420,11 @@ export class FsTree {
             "**/registry/src/**",
             "**/registry/cache/**",
             "**/index.crates.io*/**",
-            "**/.*",
-            "**/.*/**",
+            // VCS / 系统文件（其余点开头目录/文件由 defaultIgnoreMatcher 在 JS 层过滤）
+            "**/.git/**",
+            "**/.hg/**",
+            "**/.svn/**",
+            "**/.DS_Store",
         ]
 
         const ignoreNames = new Set(["node_modules", "dist", "out", ".starmap", "cargo-home", "target", ".cargo"])

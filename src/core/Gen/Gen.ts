@@ -30,10 +30,70 @@ export class Gen {
     allUnits = new AllCodeUnits()
     docFsTree?: FsTree
 
+    /** 热更新串行队列：保证增量更新与全量重生成按顺序执行，避免并发写输出目录 / 互相交错 */
+    private genQueue: Promise<void> = Promise.resolve()
+
+    /** 依赖索引：readme @import 依赖的绝对路径 → 依赖它的 CodeUnit 集合（供热更新 O(1) 定位） */
+    private depIndex = new Map<string, Set<CodeUnit>>()
+    /** unit.id → 最近记录的依赖列表（绝对路径），用于增量维护 depIndex */
+    private unitDepRecords = new Map<string, string[]>()
+
     constructor(public starmapCore: StarmapCore) {
         const docPath = getStarmapDocPath()
         if (docPath) {
             this.docFsTree = new FsTree(docPath, { watch: this.starmapCore.config.watch ?? true })
+        }
+    }
+
+    /** 把热更新任务加入串行队列，队列内任务按序执行
+     * @param task 要执行的任务
+     */
+    private enqueueGen(task: () => Promise<void>): Promise<void> {
+        const run = this.genQueue.then(task)
+        // 队列本身不因某个任务失败而中断；run 的 rejection 仍会传给调用者（await 可捕获），
+        // 这里额外挂一个空 catch 防止调用方未处理时产生 unhandled rejection（调用方多为 fire-and-forget 事件处理器）
+        run.catch(() => {})
+        this.genQueue = run.then(
+            () => undefined,
+            () => undefined,
+        )
+        return run
+    }
+
+    /** 全量重建依赖索引（全量生成后调用，此时所有 unit 的依赖已恢复/更新完毕） */
+    private rebuildDepIndex() {
+        this.depIndex.clear()
+        this.unitDepRecords.clear()
+        for (const unit of this.allUnits.flat) {
+            this.recordUnitDeps(unit, unit.readmeImportDependencyPaths)
+        }
+    }
+
+    /** 增量更新某个 unit 的依赖索引（先移除旧记录，再写入新记录）
+     * @param unit 代码单元
+     * @param deps 新的依赖绝对路径列表
+     */
+    private recordUnitDeps(unit: CodeUnit, deps: string[]) {
+        const oldDeps = this.unitDepRecords.get(unit.id)
+        if (oldDeps) {
+            for (const dep of oldDeps) {
+                const set = this.depIndex.get(dep)
+                if (set) {
+                    set.delete(unit)
+                    if (set.size === 0) this.depIndex.delete(dep)
+                }
+            }
+        }
+
+        const newDeps = Array.from(new Set(deps.map((dep) => path.resolve(dep))))
+        this.unitDepRecords.set(unit.id, newDeps)
+        for (const dep of newDeps) {
+            let set = this.depIndex.get(dep)
+            if (!set) {
+                set = new Set()
+                this.depIndex.set(dep, set)
+            }
+            set.add(unit)
         }
     }
     /**
@@ -84,6 +144,9 @@ export class Gen {
             `<Starmap|Gen> Generate Units: _${readableMs(dt_units)}_, concurrency *${concurrency}*, ` +
                 `generated *${generatedCount}*, skipped *${skippedCount}*`,
         )
+
+        // 重建依赖索引（供热更新时快速定位 @import 依赖方，此时所有 unit 依赖已恢复/更新）
+        this.rebuildDepIndex()
 
         // 生成完成事件
         await this.starmapCore.eventHub.emitAsync(StarmapCoreEvents.generateEnd, {
@@ -152,17 +215,22 @@ export class Gen {
 
     /**
      * 生成代码单元树文件
+     * @param options.emit 是否触发 generateTree 事件（会驱动 LibraryVue 重写 router 等根文件）。
+     *                     热更新仅改标题/图标等数据时应为 false，只写 JSON，交给 Vite HMR，避免整页刷新
      */
-    async generateTree() {
+    async generateTree(options?: { emit?: boolean }) {
         const outputDir = path.join(this.starmapCore.config.outputDir!)
+        const emit = options?.emit !== false
 
         outputJsonWithCache(path.join(outputDir, "units-tree.json"), unitTreeToJSON(this.allUnits.tree))
         outputJsonWithCache(path.join(outputDir, "units-flat.json"), this.allUnits.flat)
 
-        await this.starmapCore.eventHub.emitAsync(StarmapCoreEvents.generateTree, {
-            gen: this,
-            starmapCore: this.starmapCore,
-        })
+        if (emit) {
+            await this.starmapCore.eventHub.emitAsync(StarmapCoreEvents.generateTree, {
+                gen: this,
+                starmapCore: this.starmapCore,
+            })
+        }
     }
 
     /** 生成项目元数据 */
@@ -178,7 +246,7 @@ export class Gen {
     // 用于热更新
     // ---------------------------------
 
-    /** 更新生成，单个代码单元 */
+    /** 更新生成，单个代码单元（热更新路径） */
     async _updateGenUnit(unit: CodeUnit) {
         try {
             let oldId = unit.id
@@ -189,17 +257,27 @@ export class Gen {
 
             // 检查 id 是否变化，如果 id 变化直接去全部重新生成
             if (unit.id !== oldId) {
-                console.log(">>> unit.id changed, regenerate all")
+                this.starmapCore.logger.log(
+                    `<Starmap|Watch> unit.id 变化 (*${oldId}* → *${unit.id}*)，触发全量重新生成`,
+                )
                 await this.generate()
                 return
             }
-            // 重新生成代码单元
-            await this.generateUnit(unit)
 
-            // 更改了元数据（图标、标题等需要更新目录树）
+            // 热更新路径：已知输入已变，强制重新生成，避免 stamp / mtime 竞态导致跳过
+            // 只会重写该 unit 的 readme.vue / code-unit.json 等，由 Vite 对 Vue SFC 做 HMR
+            await this.generateUnit(unit, { force: true })
+
+            // 同步依赖索引（generateUnit 已恢复/更新 @import 依赖列表）
+            this.recordUnitDeps(unit, unit.readmeImportDependencyPaths)
+
+            // 标题/图标/排序等 metadata 变化时，只更新 units-tree.json 等数据文件（不 emit generateTree）
+            // 避免 generateCodeRoot 重写 entry（metadata.ts / router.ts）导致 Vite 整页刷新
             if (JSON.stringify(unit.metadata) !== oldMetadata) {
-                console.log(">>> unit metadata changed, regenerate tree")
-                await this._updateGenTree()
+                this.starmapCore.logger.debug(
+                    `<Starmap|Watch> unit metadata 变化，热更新目录树数据: *${unit.id}*`,
+                )
+                await this._updateGenTree({ refreshRootCode: false })
             }
         } catch (err: any) {
             this.starmapCore.logger.error(
@@ -209,9 +287,13 @@ export class Gen {
         }
     }
 
-    /** 更新生成，重新生成单元目录树和 root 元数据，但不会重新全部生成代码单元 */
-    async _updateGenTree() {
-        await this.generateTree()
+    /** 更新生成，重新生成单元目录树和 root 元数据，但不会重新全部生成代码单元
+     * @param options.refreshRootCode 是否触发 generateTree 事件以重写 router / 根模板。
+     *                                新增/删除 unit 等结构变化需要 true；仅 metadata 文案变化应为 false（纯 HMR）
+     */
+    async _updateGenTree(options?: { refreshRootCode?: boolean }) {
+        const refreshRootCode = options?.refreshRootCode !== false
+        await this.generateTree({ emit: refreshRootCode })
         await this.generateRootMetadata()
     }
 
@@ -224,7 +306,10 @@ export class Gen {
             await unit.ready
             this.allUnits.addUnit(unit)
             await this.generateUnit(unit)
-            await this._updateGenTree()
+            // 同步依赖索引
+            this.recordUnitDeps(unit, unit.readmeImportDependencyPaths)
+            // 结构变化：需要刷新 router 等根文件
+            await this._updateGenTree({ refreshRootCode: true })
         } catch (err: any) {
             this.starmapCore.logger.error(
                 `\n${chalk.red.bold("✖")} 新增 CodeUnit 失败: _${fullPath}_\n` +
@@ -246,7 +331,8 @@ export class Gen {
             if (!fn) {
                 fn = debounce(async () => {
                     logger.log(`<Starmap|Watch> 🔄 重新生成 CodeUnit: *${unit.id}*`)
-                    await this._updateGenUnit(unit)
+                    // 串行队列：同一时间只执行一个生成任务，避免自动保存连发时重叠生成
+                    await this.enqueueGen(() => this._updateGenUnit(unit))
                 }, 300)
                 unitUpdateMap.set(unit.id, fn)
             }
@@ -275,7 +361,7 @@ export class Gen {
                 if (isUnitEntryPath(event.relativePath)) {
                     // 新增入口文件 → 创建新的 CodeUnit
                     logger.log(`<Starmap|Watch> ✨ 新增 CodeUnit: _${event.relativePath}_`)
-                    await this._updateGenNewUnit(event.fullPath)
+                    await this.enqueueGen(() => this._updateGenNewUnit(event.fullPath))
                     return
                 }
 
@@ -301,11 +387,11 @@ export class Gen {
                 }
 
                 if (isUnitEntryPath(event.relativePath)) {
-                    // 入口文件变化 → 直接更新对应的 CodeUnit
+                    // 入口文件变化 → 更新对应的 CodeUnit（防抖 + 串行，避免自动保存连发多次重叠生成）
                     const unit = findUnitByEntryPath(event.relativePath)
                     if (unit) {
                         logger.log(`<Starmap|Watch> 📝 readme 变更: _${event.relativePath}_ → CodeUnit *${unit.id}*`)
-                        await this._updateGenUnit(unit)
+                        getDebouncedUnitUpdate(unit)()
                     }
                     return
                 }
@@ -405,21 +491,18 @@ export class Gen {
 
         /**
          * 根据 readme 中 @import 的依赖文件查找需要重新生成的 CodeUnit
+         * 通过依赖索引 O(1) 定位，避免每次文件变化都全表扫描
          */
         const findUnitsByImportDependency = (fullPath: string): CodeUnit[] => {
             const normalizedFullPath = path.resolve(fullPath)
-            return this.allUnits.flat.filter((unit) => {
-                return unit.readmeImportDependencyPaths.some((dependencyPath) => {
-                    return path.resolve(dependencyPath) === normalizedFullPath
-                })
-            })
+            return Array.from(this.depIndex.get(normalizedFullPath) ?? [])
         }
 
         /** 全量重新生成（debounced） */
         const generateDebounced = debounce(async () => {
             logger.log(`<Starmap|Watch> 🔁 执行全量重新生成`)
             try {
-                await this.generate()
+                await this.enqueueGen(() => this.generate())
             } catch (err: any) {
                 logger.error(
                     `\n${chalk.red.bold("✖")} 热更新全量重新生成失败!\n` +
@@ -434,12 +517,18 @@ class AllCodeUnits {
     flat: CodeUnit[] = []
     tree: CodeUnit[] = []
     map: Map<string, CodeUnit> = new Map()
+    /** dirPath（规范化）→ CodeUnit，O(1) 定位所属单元 */
+    dirPathMap: Map<string, CodeUnit> = new Map()
+    /** readme 相对路径（规范化）→ CodeUnit，O(1) 定位入口单元 */
+    readmePathMap: Map<string, CodeUnit> = new Map()
 
     /** 清空所有缓存的 CodeUnit 数据 */
     clear() {
         this.flat = []
         this.tree = []
         this.map.clear()
+        this.dirPathMap.clear()
+        this.readmePathMap.clear()
     }
 
     /** 设置代码单元列表，会重建 tree 和 map
@@ -448,9 +537,17 @@ class AllCodeUnits {
     setUnits(flatUnits: CodeUnit[]) {
         this.flat = [...flatUnits]
         this.map.clear()
+        this.dirPathMap.clear()
+        this.readmePathMap.clear()
 
         for (const unit of this.flat) {
             this.map.set(unit.id, unit)
+            // 同目录多个 readme（readme.md + README.md）时保持与 flat.find 一致：先到先得
+            const dirKey = normalizeUnitPath(unit.dirPath)
+            if (!this.dirPathMap.has(dirKey)) {
+                this.dirPathMap.set(dirKey, unit)
+            }
+            this.readmePathMap.set(normalizeUnitPath(unit.readmePath), unit)
         }
 
         this.tree = createUnitTree(this.flat)
@@ -465,6 +562,11 @@ class AllCodeUnits {
 
         this.map.delete(id)
         this.flat = this.flat.filter((unit) => unit.id !== id)
+        const dirKey = normalizeUnitPath(target.dirPath)
+        if (this.dirPathMap.get(dirKey) === target) {
+            this.dirPathMap.delete(dirKey)
+        }
+        this.readmePathMap.delete(normalizeUnitPath(target.readmePath))
         this.tree = createUnitTree(this.flat)
     }
 
@@ -474,6 +576,11 @@ class AllCodeUnits {
     addUnit(unit: CodeUnit) {
         this.flat.push(unit)
         this.map.set(unit.id, unit)
+        const dirKey = normalizeUnitPath(unit.dirPath)
+        if (!this.dirPathMap.has(dirKey)) {
+            this.dirPathMap.set(dirKey, unit)
+        }
+        this.readmePathMap.set(normalizeUnitPath(unit.readmePath), unit)
         this.tree = createUnitTree(this.flat)
     }
 
@@ -481,16 +588,14 @@ class AllCodeUnits {
      * @param path 代码单元目录路径（相对项目路径）
      */
     getByPath(path: string): CodeUnit | undefined {
-        const normalizedPath = path.split("\\").join("/")
-        return this.flat.find((unit) => unit.dirPath === normalizedPath)
+        return this.dirPathMap.get(normalizeUnitPath(path))
     }
 
     /** 通过入口文件路径获取 CodeUnit
      * @param readmePath 入口文件路径（相对项目路径）
      */
     getByReadmePath(readmePath: string): CodeUnit | undefined {
-        const normalizedPath = readmePath.split("\\").join("/")
-        return this.flat.find((unit) => unit.readmePath === normalizedPath)
+        return this.readmePathMap.get(normalizeUnitPath(readmePath))
     }
 
     /** 通过 ID 获取 CodeUnit
@@ -516,4 +621,9 @@ class AllCodeUnits {
 
         return nextId
     }
+}
+
+/** 路径规范化：统一为 / 分隔（Windows 反斜杠转正斜杠） */
+function normalizeUnitPath(inputPath: string): string {
+    return inputPath.split("\\").join("/")
 }

@@ -87,6 +87,80 @@ describe("FsTree", () => {
     })
 })
 
+describe("FsTree 扫描磁盘缓存", () => {
+    test("首次扫描生成缓存文件，再次扫描校验命中且结果一致", () => {
+        const subRoot = path.join(distPath, "disk-cache-basic")
+        fs.mkdirSync(path.join(subRoot, "pkg-a"), { recursive: true })
+        fs.writeFileSync(path.join(subRoot, "readme.md"), "# root")
+        fs.writeFileSync(path.join(subRoot, "pkg-a", "readme.md"), "# a")
+
+        const cacheFile = path.join(subRoot, "scan-cache.json")
+        const tree = new FsTree(subRoot, { watch: false, scanCacheFile: cacheFile })
+
+        // 首次扫描：真实 glob，并生成缓存文件
+        const nodes1 = tree.scanFiles(["**/readme.md", "**/README.md"])
+        expect(nodes1).toHaveLength(2)
+        expect(fs.existsSync(cacheFile)).toBe(true)
+
+        // 再次扫描：磁盘缓存校验命中，结果一致（同一 FsNode 实例）
+        const nodes2 = tree.scanFiles(["**/readme.md", "**/README.md"])
+        expect(nodes2.map((n) => n.fileFullPath).sort()).toEqual(nodes1.map((n) => n.fileFullPath).sort())
+
+        fs.rmSync(subRoot, { recursive: true, force: true })
+    })
+
+    test("缓存命中时返回缓存条目（幽灵文件验证未走 glob）", () => {
+        const subRoot = path.join(distPath, "disk-cache-ghost")
+        fs.mkdirSync(subRoot, { recursive: true })
+        fs.writeFileSync(path.join(subRoot, "readme.md"), "# root")
+
+        const cacheFile = path.join(subRoot, "scan-cache.json")
+        const tree = new FsTree(subRoot, { watch: false, scanCacheFile: cacheFile })
+        expect(tree.scanFiles(["**/readme.md", "**/README.md"])).toHaveLength(1)
+
+        // 创建一个不匹配 pattern 的文件，并把它的条目 + 最新目录 mtime 手动写进缓存
+        // 若扫描结果包含它，说明返回的是缓存内容（glob 不会匹配 ghost.md）
+        fs.writeFileSync(path.join(subRoot, "ghost.md"), "x")
+        const cache = JSON.parse(fs.readFileSync(cacheFile, "utf-8"))
+        const ghostStat = fs.statSync(path.join(subRoot, "ghost.md"))
+        cache.entries.push({ rel: "ghost.md", mtime: ghostStat.mtimeMs })
+        const rootStat = fs.statSync(subRoot)
+        cache.dirs = cache.dirs.map((d: any) => (d.rel === "." ? { rel: ".", mtime: rootStat.mtimeMs } : d))
+        fs.writeFileSync(cacheFile, JSON.stringify(cache))
+
+        const nodes = tree.scanFiles(["**/readme.md", "**/README.md"])
+        expect(nodes.map((n) => path.basename(n.fileFullPath)).sort()).toEqual(["ghost.md", "readme.md"])
+
+        fs.rmSync(subRoot, { recursive: true, force: true })
+    })
+
+    test("目录结构变化（新增/删除）后校验失败，重新扫描", () => {
+        const subRoot = path.join(distPath, "disk-cache-invalidate")
+        fs.mkdirSync(path.join(subRoot, "pkg-a"), { recursive: true })
+        fs.writeFileSync(path.join(subRoot, "readme.md"), "# root")
+        fs.writeFileSync(path.join(subRoot, "pkg-a", "readme.md"), "# a")
+
+        const cacheFile = path.join(subRoot, "scan-cache.json")
+        const tree = new FsTree(subRoot, { watch: false, scanCacheFile: cacheFile })
+        expect(tree.scanFiles(["**/readme.md", "**/README.md"])).toHaveLength(2)
+
+        // 删除一个 readme：所在目录 mtime 变化 → 校验失败 → 重新 glob
+        fs.rmSync(path.join(subRoot, "pkg-a", "readme.md"))
+        expect(tree.scanFiles(["**/readme.md", "**/README.md"])).toHaveLength(1)
+
+        // 新增一个 readme（新目录）：root mtime 变化 → 校验失败 → 重新 glob
+        fs.mkdirSync(path.join(subRoot, "pkg-b"), { recursive: true })
+        fs.writeFileSync(path.join(subRoot, "pkg-b", "readme.md"), "# b")
+        expect(tree.scanFiles(["**/readme.md", "**/README.md"])).toHaveLength(2)
+
+        // 文件内容更新：文件 mtime 变化 → 校验失败 → 重新 glob（结果集不变但缓存已刷新）
+        fs.writeFileSync(path.join(subRoot, "readme.md"), "# root v2")
+        expect(tree.scanFiles(["**/readme.md", "**/README.md"])).toHaveLength(2)
+
+        fs.rmSync(subRoot, { recursive: true, force: true })
+    })
+})
+
 describe("FsNode", () => {
     test("fileRelativePath：返回相对于 rootPath 的路径", () => {
         const tree = new FsTree(distPath)
@@ -121,7 +195,7 @@ describe("FsNode", () => {
         expect(buffer.byteLength).toBe("# Hello World".length)
     })
 
-    test("changeCache：mtime 变化时清除缓存", async () => {
+    test("changeCache：收到变更通知时强制清除缓存", async () => {
         const tree = new FsTree(distPath)
         const node = tree.scanFiles("readme.md")[0]
 
@@ -129,8 +203,10 @@ describe("FsNode", () => {
         const text1 = await node.readText()
         expect(text1).toBe("# Hello World")
 
-        // 模拟 mtime 变化，触发缓存失效
-        node.changeCache(Date.now() + 99999)
+        // 模拟 watcher 通知：即使传入与缓存相同的 mtime 也必须失效
+        // （避免编辑器原子写入 / stat 竞态导致读到旧内容）
+        const oldMtime = fs.statSync(node.fileFullPath).mtimeMs
+        node.changeCache(oldMtime)
 
         // 修改文件内容
         fs.writeFileSync(node.fileFullPath, "# Updated", "utf-8")

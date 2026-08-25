@@ -63,7 +63,10 @@ export default defineComponent({
     components: { UnitTree },
     data() {
         return {
+            /** 侧栏目录树数据：初始从全局读取，热更新时通过 starmap:meta-updated 同步 */
             unitsTree: window.__starmap__?.unitsTree ?? [],
+            /** 根元数据快照，保证 projectName / alwaysSticky 等也能随热更新刷新 */
+            rootMetadata: window.__starmap__?.rootMetadata ?? null,
             sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
             isResizing: false,
             isCollapsed: false,
@@ -71,6 +74,14 @@ export default defineComponent({
         }
     },
     methods: {
+        /**
+         * 从 window.__starmap__ 同步目录树与根元数据
+         * metadata.ts / unit.vue 在 HMR 或导航时会 dispatch starmap:meta-updated
+         */
+        syncFromGlobalMeta() {
+            this.unitsTree = window.__starmap__?.unitsTree ?? []
+            this.rootMetadata = window.__starmap__?.rootMetadata ?? null
+        },
         toggleTheme() {
             this.isDarkTheme = !this.isDarkTheme
             document.documentElement.classList.toggle("is-dark-theme", this.isDarkTheme)
@@ -119,6 +130,13 @@ export default defineComponent({
         console.log(...fmt("🌟 <Starmap> mounted.", { __starmap__: window.__starmap__ }))
         // Initialize theme state from html class if it exists from previous load
         this.isDarkTheme = document.documentElement.classList.contains("is-dark-theme")
+        // 监听热更新：units-tree.json 变更后 metadata 模块会 dispatch 此事件
+        window.addEventListener("starmap:meta-updated", this.syncFromGlobalMeta)
+        // 挂载时再同步一次，避免 metadata 脚本在 app mount 之后才完成时拿到空树
+        this.syncFromGlobalMeta()
+    },
+    beforeUnmount() {
+        window.removeEventListener("starmap:meta-updated", this.syncFromGlobalMeta)
     },
     computed: {
         /** 当前选中的 Unit ID，从路由路径中获取 */
@@ -130,14 +148,14 @@ export default defineComponent({
             return undefined
         },
         projectName() {
-            return window.__starmap__?.rootMetadata?.projectName ?? "Starmap"
+            return this.rootMetadata?.projectName ?? "Starmap"
         },
         projectIconUrl() {
             return starmapIcon
         },
         /** 树列表是否总是启用 sticky 吸顶效果 */
         alwaysSticky(): boolean {
-            return window.__starmap__?.rootMetadata?.uiTreeDirAlwaysSticky ?? false
+            return this.rootMetadata?.uiTreeDirAlwaysSticky ?? false
         },
         isHelpActive(): boolean {
             return this.selectedId === "starmap-usege"

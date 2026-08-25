@@ -104,31 +104,26 @@ export class FsNode {
         return re
     }
 
-    /** 根据给定的新 Mtime 判断缓存的内容是否失效，如果失效则清除缓存
-     *  由 FsTree 触发
-     *  @param newMtime 文件的新修改时间戳
+    /** 收到文件系统变更通知时清除内容缓存
+     *
+     * 由 FsTree 在 watcher 事件中触发。必须信任 watcher：不能仅靠 mtime 比较决定是否失效——
+     * 编辑器原子写入 / 保存过程中 stat 到旧 mtime / 同毫秒连续写入 等情况都会让 mtime
+     * 「看起来没变」，从而导致读到旧内容、热更新目录树与文档不刷新。
+     *
+     * @param _newMtime 文件的新修改时间戳（保留参数便于调用方传入，当前一律强制失效）
      */
-    changeCache(newMtime: number) {
-        // 检查 Buffer 缓存：mtime 不同则失效
-        if (this._contentMTime !== null && this._contentMTime !== newMtime) {
-            this._contentBuffer = null
-            this._contentMTime = null
-            this._contentCachedTime = null
-        }
+    changeCache(_newMtime: number) {
+        this._contentBuffer = null
+        this._contentMTime = null
+        this._contentCachedTime = null
 
-        // 检查 Text 缓存：mtime 不同则失效
-        if (this._contentTextMTime !== null && this._contentTextMTime !== newMtime) {
-            this._contentText = null
-            this._contentTextMTime = null
-            this._contentTextCachedTime = null
-        }
+        this._contentText = null
+        this._contentTextMTime = null
+        this._contentTextCachedTime = null
 
-        // 检查 Markdown 缓存：mtime 不同则失效
-        if (this._contentMarkdownMTime !== null && this._contentMarkdownMTime !== newMtime) {
-            this._contentMarkdown = null
-            this._contentMarkdownMTime = null
-            this._contentMarkdownCachedTime = null
-        }
+        this._contentMarkdown = null
+        this._contentMarkdownMTime = null
+        this._contentMarkdownCachedTime = null
     }
 
     /** 父节点 */

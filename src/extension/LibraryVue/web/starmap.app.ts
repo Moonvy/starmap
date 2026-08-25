@@ -1,13 +1,13 @@
 import { createApp } from "vue"
 
-import "./style"
+import "./style/index.ts"
 
 import Root from "./pages/Root.vue"
 import PageTabs from "./components/PageTabs/PageTabs.vue"
 import PageTab from "./components/PageTabs/PageTab.vue"
 import PageHeader from "./components/PageHeader/PageHeader.vue"
 import MarkdownWrap from "./components/MarkdownWrap/MarkdownWrap.vue"
-import { registerMarkdownComponents } from "./components/MarkdownWrap"
+import { registerMarkdownComponents } from "./components/MarkdownWrap/index.ts"
 
 main()
 

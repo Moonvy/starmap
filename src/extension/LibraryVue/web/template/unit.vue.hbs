@@ -14,7 +14,8 @@
 import metadata from "./metadata.ts"
 import StarmapReadmeWrap from "./readme.vue"
 
-Object.assign(window?.__starmap__, metadata)
+// 只同步当前 unit 的 codeUnit / vueMetadata，不要覆盖全局 unitsTree（由根 metadata.ts 维护）
+Object.assign(window?.__starmap__ || {}, metadata)
 
 {{{unitVueCode.importCode}}}
 
@@ -23,12 +24,39 @@ export default {
          StarmapReadmeWrap,
          {{{unitVueCode.componentsCode}}}
     },
-    mounted() {},
     provide() {
-        return { codeUnit:metadata.codeUnit }
+        return { codeUnit: this.codeUnit }
     },
     data() {
         return { codeUnit: metadata.codeUnit, activeTab: "readme" }
     },
+    mounted() {
+        // code-unit.json 热更新时刷新页头标题等，保留 activeTab 本地状态
+        this._onUnitMetaUpdated = (event) => {
+            const next = event.detail
+            if (!next?.codeUnit || next.codeUnit.id !== this.codeUnit?.id) return
+            this.codeUnit = next.codeUnit
+            if (next.vueMetadata !== undefined) {
+                Object.assign(window?.__starmap__ || {}, { vueMetadata: next.vueMetadata })
+            }
+        }
+        window.addEventListener("starmap:unit-meta-updated", this._onUnitMetaUpdated)
+    },
+    beforeUnmount() {
+        window.removeEventListener("starmap:unit-meta-updated", this._onUnitMetaUpdated)
+    },
+}
+
+// 单元 metadata（code-unit.json）HMR：更新当前页 codeUnit，不整页刷新
+// @ts-ignore
+if (import.meta.hot) {
+    // @ts-ignore
+    import.meta.hot.accept("./metadata.ts", (mod) => {
+        if (!mod?.default?.codeUnit) return
+        Object.assign(window?.__starmap__ || {}, mod.default)
+        window.dispatchEvent(
+            new CustomEvent("starmap:unit-meta-updated", { detail: mod.default }),
+        )
+    })
 }
 </script>

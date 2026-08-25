@@ -31,8 +31,8 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from "vue"
-import type { CodeUnitJSON } from "../../../../../core/Gen/lib/unitTreeToJSON"
-import { sortUnitNodes } from "./sortUnitNodes"
+import type { CodeUnitJSON } from "../../../../../core/Gen/lib/unitTreeToJSON.ts"
+import { sortUnitNodes } from "./sortUnitNodes.ts"
 import UnitTreeContextMenu from "./UnitTreeContextMenu.vue"
 import UnitTreeNode from "./UnitTreeNode.vue"
 import { getNodeLabel } from "./UnitTreeNode.vue"
@@ -112,9 +112,10 @@ export default defineComponent({
     watch: {
         units: {
             immediate: true,
+            // 热更新时 units 引用会整体替换（含 metadata 标题变更），需要响应
             handler(newUnits: UnitNode[]) {
                 // 只在数据实质性变化（根节点 ID 列表改变）时才重建展开状态
-                // 避免响应式触发时覆盖用户手动收起的节点
+                // 避免仅标题/图标等 metadata 刷新时覆盖用户手动收起的节点
                 const newIds = newUnits.map((n) => n.id).join(",")
                 if (newIds !== this._lastUnitIds) {
                     this._lastUnitIds = newIds

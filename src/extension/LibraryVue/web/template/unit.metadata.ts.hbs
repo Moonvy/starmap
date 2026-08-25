@@ -4,23 +4,16 @@ import codeUnit from "./code-unit.json" with { type: "json" }
 // @ts-ignore
 import vueMetadata from "./vue-metadata.json" with { type: "json" }
 {{/mainComponentFsNode}}
-// @ts-ignore
-import unitsFlat from "../../units-flat.json" with { type: "json" }
-// @ts-ignore
-import unitsTree from "../../units-tree.json" with { type: "json" }
-// @ts-ignore
-import rootMetadata from "../../root-metadata.json" with { type: "json" }
 
-
+// 注意：不要在此 import units-tree / units-flat / root-metadata。
+// 否则每个 unit 页面都会订阅全局树 JSON，readme 热更新写树时会牵动全部 unit 模块图，
+// 容易让 Vite 放弃 HMR 而整页刷新。全局树只由根目录 metadata.ts 维护。
 
 const metadata = {
     codeUnit,
     {{#mainComponentFsNode}}
     vueMetadata,
     {{/mainComponentFsNode}}
-    unitsFlat,
-    unitsTree,
-    rootMetadata
 }
 
 export default metadata

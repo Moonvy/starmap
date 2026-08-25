@@ -87,15 +87,21 @@ export class CodeUnit {
 
         this.id = id
 
-        // 并行探测目录内常见入口文件，减少串行 access 往返
+        // 一次 readdir 探测目录内常见入口文件（替代 3 次串行 fs.access 往返）
         const indexTsPath = path.join(this.dirFullPath, "index.ts")
         const sameNameVuePath = path.join(this.dirFullPath, `${this.dirName}.vue`)
         const indexVuePath = path.join(this.dirFullPath, "index.vue")
-        const [indexTsExists, sameNameVueExists, indexVueExists] = await Promise.all([
-            fileExists(indexTsPath),
-            fileExists(sameNameVuePath),
-            fileExists(indexVuePath),
-        ])
+        let entryNames: Set<string> | null = null
+        try {
+            const entries = await fs.readdir(this.dirFullPath)
+            entryNames = new Set(entries)
+        } catch {
+            // 目录不可读时按全部不存在处理
+        }
+        const hasEntry = (name: string) => entryNames !== null && entryNames.has(name)
+        const indexTsExists = hasEntry("index.ts")
+        const sameNameVueExists = hasEntry(`${this.dirName}.vue`)
+        const indexVueExists = hasEntry("index.vue")
 
         if (indexTsExists) {
             this.indexCodeFsNode = this.gen.starmapCore.fsTree.getOrCreateNode(indexTsPath)

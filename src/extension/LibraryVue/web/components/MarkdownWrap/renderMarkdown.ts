@@ -3,7 +3,7 @@ import MarkdownItGitHubAlerts from "markdown-it-github-alerts"
 import MarkdownItCjkFriendly from "markdown-it-cjk-friendly"
 
 import anchor from "markdown-it-anchor"
-import { dirname, resolve, isAbsolute } from "path"
+import path, { dirname, resolve, isAbsolute, posix } from "path"
 import { markdownCodeHighlight } from "./lib/markdownItCodeHighlight"
 import { markdownCodeImportResolve } from "./lib/markdownImportResolve"
 import { markdownItImage } from "./lib/markdownItImage"
@@ -265,6 +265,17 @@ export function resolveHtmlMediaPaths(html: string, filePath: string) {
     return resultHtml
 }
 
+// ---- resolveHtmlLocalLinks 索引缓存（按 codeUnits 数组引用复用，全量生成时只构建一次）----
+let linksIndexUnits: any[] | null = null
+let linksIndexSize = 0
+let linksIndexDirMap: Map<string, any> | null = null
+let linksIndexReadmeMap: Map<string, any> | null = null
+
+/** 路径规范化：统一为 / 分隔 */
+function normalizeLinkPath(inputPath: string): string {
+    return inputPath.split(path.sep).join("/")
+}
+
 /**
  * 处理 HTML 文本，将指向本地 markdown 文件的链接转换为 SPA 路由地址
  */
@@ -274,6 +285,24 @@ export function resolveHtmlLocalLinks(html: string, filePath: string, codeUnits:
     // 获取项目根目录，如果获取不到则使用 dir 作为退路
     const sampleUnit = codeUnits[0]
     const rootPath = sampleUnit?.gen?.starmapCore?.config?.rootPath || dir
+
+    // 构建/复用索引：单元目录 → unit 与 readme 绝对路径 → unit
+    // （AllCodeUnits.addUnit 会在原数组上 push，引用不变但长度变化，用长度兜底重建）
+    if (linksIndexUnits !== codeUnits || linksIndexSize !== codeUnits.length) {
+        linksIndexUnits = codeUnits
+        linksIndexSize = codeUnits.length
+        linksIndexDirMap = new Map()
+        linksIndexReadmeMap = new Map()
+        for (const unit of codeUnits) {
+            if (!unit.readmeFullPath) continue
+            const unitAbs = resolve(unit.readmeFullPath)
+            const unitDir = dirname(unitAbs)
+            linksIndexDirMap.set(normalizeLinkPath(unitDir), unit)
+            linksIndexReadmeMap.set(normalizeLinkPath(unitAbs), unit)
+        }
+    }
+    const unitByDir = linksIndexDirMap!
+    const unitByReadme = linksIndexReadmeMap!
 
     let resultHtml = html
 
@@ -308,36 +337,24 @@ export function resolveHtmlLocalLinks(html: string, filePath: string, codeUnits:
         const cleanPath = pathPart.startsWith("./") ? pathPart.slice(2) : pathPart
         const targetAbsPath2 = resolve(rootPath, cleanPath)
 
-        // 寻找与 targetAbs 匹配的最佳单元（支持完全匹配和同目录/子目录下其他 markdown 文件的匹配）
+        // 在索引中查找目标路径对应的最佳单元（O(depth) 逐级向上，越深的目录优先级越高）
         const findBestUnit = (targetAbs: string) => {
-            let bestUnit = null
-            let maxLen = -1
-            const normalizedTarget = targetAbs.replace(/\\/g, "/")
+            const normalizedTarget = normalizeLinkPath(targetAbs).replace(/\/+$/, "")
 
-            for (const unit of codeUnits) {
-                if (!unit.readmeFullPath) continue
-                const unitAbs = resolve(unit.readmeFullPath)
-                const normalizedUnitAbs = unitAbs.replace(/\\/g, "/")
+            // 1. 完全匹配：目标就是某个单元的主 readme.md，直接返回最高优先级
+            const exact = unitByReadme.get(normalizedTarget)
+            if (exact) return exact
 
-                // 1. 如果完全相等，代表是该单元的主 readme.md，直接返回最高优先级
-                if (normalizedUnitAbs === normalizedTarget) {
-                    return unit
-                }
-
-                // 2. 否则，判断 targetAbs 是否位于该单元所在的目录或其子目录下
-                const unitDir = dirname(unitAbs)
-                const normalizedUnitDir = unitDir.replace(/\\/g, "/")
-                if (
-                    normalizedTarget === normalizedUnitDir ||
-                    normalizedTarget.startsWith(normalizedUnitDir + "/")
-                ) {
-                    if (normalizedUnitDir.length > maxLen) {
-                        maxLen = normalizedUnitDir.length
-                        bestUnit = unit
-                    }
-                }
+            // 2. 从目标路径（或其目录）逐级向上查找所属单元
+            let curDir = normalizedTarget
+            while (true) {
+                const unit = unitByDir.get(curDir)
+                if (unit) return unit
+                const parentDir = posix.dirname(curDir)
+                if (parentDir === curDir) break
+                curDir = parentDir
             }
-            return bestUnit
+            return null
         }
 
         // 优先尝试相对于当前文件的绝对路径，其次尝试相对于项目根目录的绝对路径

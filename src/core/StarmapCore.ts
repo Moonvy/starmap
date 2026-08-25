@@ -52,7 +52,11 @@ export class StarmapCore {
         this.eventHub = new RawEvents<typeof StarmapCoreEventDefine>()
 
         // 初始化文件系统
-        this.fsTree = new FsTree(this.config.rootPath!, { watch: this.config.watch ?? true })
+        this.fsTree = new FsTree(this.config.rootPath!, {
+            watch: this.config.watch ?? true,
+            // 扫描结果磁盘缓存：跨进程复用，避免每次启动都全量 glob 扫描（rebuild 清空 outputDir 后自动失效）
+            scanCacheFile: path.join(this.config.outputDir!, "cache", "scan-cache.json"),
+        })
 
         // 初始化生成器
         // （包括实时更新监视）

@@ -11,10 +11,10 @@
         "@fontsource-variable/roboto-mono": "5.2.8",
         "@fontsource/dm-serif-display": "5.2.8",
         "@fontsource/fusion-pixel-12px-monospaced-sc": "5.2.5",
-        "@haoduo-icon/fluent": "1.0.3",
-        "@haoduo-icon/lucide": "1.0.3",
-        "@haoduo-icon/material-symbols": "1.0.3",
-        "@haoduo-icon/ri": "link:@haoduo-icon/ri",
+        "@haoduo-icon/fluent": "1.0.4",
+        "@haoduo-icon/lucide": "1.0.4",
+        "@haoduo-icon/material-symbols": "1.0.4",
+        "@haoduo-icon/ri": "1.0.4",
         "@parcel/watcher": "2.5.1",
         "@shikijs/transformers": "4.1.0",
         "@types/fs-extra": "11.0.4",
@@ -159,13 +159,13 @@
 
     "@fontsource/fusion-pixel-12px-monospaced-sc": ["@fontsource/fusion-pixel-12px-monospaced-sc@5.2.5", "https://registry.npmmirror.com/@fontsource/fusion-pixel-12px-monospaced-sc/-/fusion-pixel-12px-monospaced-sc-5.2.5.tgz", {}, "sha512-WrPLh27o8+kiHywZYB9uny7izDOpjY2nCeNKxhfXZVCz2th9iL5jG4tW9WB+4830ZHqzPYs31U/JhyFFPsyfYA=="],
 
-    "@haoduo-icon/fluent": ["@haoduo-icon/fluent@1.0.3", "https://registry.npmmirror.com/@haoduo-icon/fluent/-/fluent-1.0.3.tgz", {}, "sha512-W1gAB5ut1poT8yJTWMzh9eGBStlN8jaVtqZYTYWVvftzxV8hfzK4n9gq80bM49Vjr2boXTDobv/9/gwFs1a1Tg=="],
+    "@haoduo-icon/fluent": ["@haoduo-icon/fluent@1.0.4", "https://registry.npmmirror.com/@haoduo-icon/fluent/-/fluent-1.0.4.tgz", {}, "sha512-KcCx+pTmbPt1W0dW+Zh/w01EfKxHjBja/c9xfqtDetbdM3usgH3BBsc46QkdQerqymTbz68QTAd/UtmwE8E71A=="],
 
-    "@haoduo-icon/lucide": ["@haoduo-icon/lucide@1.0.3", "https://registry.npmmirror.com/@haoduo-icon/lucide/-/lucide-1.0.3.tgz", {}, "sha512-OyhEb2HLqZVJg7dpmYPHo5uBXLq9hsgzrATPn/RyDXhdORuVdek+g7bJKgun4dvbsqJ3pq7vbfG79SpXnCSMZg=="],
+    "@haoduo-icon/lucide": ["@haoduo-icon/lucide@1.0.4", "https://registry.npmmirror.com/@haoduo-icon/lucide/-/lucide-1.0.4.tgz", {}, "sha512-f3w3XrbZCAa26CTjKTEudyP9VjlYFAXZb1HBccU5GIgim3q8NxuV6ar8muVf/E+fAaKLt2jGR/tTDVQXPEfYmg=="],
 
-    "@haoduo-icon/material-symbols": ["@haoduo-icon/material-symbols@1.0.3", "https://registry.npmmirror.com/@haoduo-icon/material-symbols/-/material-symbols-1.0.3.tgz", {}, "sha512-+WFAR8Lja91bVOnZUaX/R1MssvUl1ApY0eLUN7Nk4x7u5ASTdVYm8t/zo8IH9EjLQiPkgKX/gzJCCKpk/RvG0g=="],
+    "@haoduo-icon/material-symbols": ["@haoduo-icon/material-symbols@1.0.4", "https://registry.npmmirror.com/@haoduo-icon/material-symbols/-/material-symbols-1.0.4.tgz", {}, "sha512-QnIj32WaaVIA16D85g0ziMisjbUS/4JMB/tSradFWu0k0rBfgSwM4HWXWtCrr11/3CocMjswF5FLkQ83/7cK9g=="],
 
-    "@haoduo-icon/ri": ["@haoduo-icon/ri@link:@haoduo-icon/ri", {}],
+    "@haoduo-icon/ri": ["@haoduo-icon/ri@1.0.4", "https://registry.npmmirror.com/@haoduo-icon/ri/-/ri-1.0.4.tgz", {}, "sha512-zpFse39bsX3HNd692nGdTXmFjG+vux79B2ajC0FkjZqOVLJLS2NV+vQzQ1E6Q6bf2+rpLslyITPbvY7vYGzJfg=="],
 
     "@jridgewell/gen-mapping": ["@jridgewell/gen-mapping@0.3.13", "https://registry.npmmirror.com/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.0", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA=="],
 
