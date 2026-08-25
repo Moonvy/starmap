@@ -233,7 +233,7 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from "vue"
-import type { CodeUnitJSON } from "../../../../../core/Gen/lib/unitTreeToJSON"
+import type { CodeUnitJSON } from "../../../../../core/Gen/CodeUnit.type"
 import { sortUnitNodes } from "./sortUnitNodes"
 
 type UnitNode = CodeUnitJSON

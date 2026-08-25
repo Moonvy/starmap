@@ -31,7 +31,7 @@
 
 <script lang="ts">
 import { defineComponent, type PropType } from "vue"
-import type { CodeUnitJSON } from "../../../../../core/Gen/lib/unitTreeToJSON.ts"
+import type { CodeUnitJSON } from "../../../../../core/Gen/CodeUnit.type"
 import { sortUnitNodes } from "./sortUnitNodes.ts"
 import UnitTreeContextMenu from "./UnitTreeContextMenu.vue"
 import UnitTreeNode from "./UnitTreeNode.vue"

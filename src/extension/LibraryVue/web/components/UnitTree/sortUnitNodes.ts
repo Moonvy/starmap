@@ -1,4 +1,4 @@
-import type { CodeUnitJSON } from "../../../../../core/Gen/lib/unitTreeToJSON"
+import type { CodeUnitJSON } from "../../../../../core/Gen/CodeUnit.type"
 
 type UnitNode = CodeUnitJSON
 

@@ -14,3 +14,20 @@ export interface CodeUnitMetadata {
 
     [key: string]: any
 }
+
+export interface CodeUnitJSON {
+    id: string
+    dirPath: string
+    dirName: string
+    readmePath: string
+    metadata: CodeUnitMetadata
+    parentId: string | null
+    isInternalDoc?: boolean
+    children?: CodeUnitJSON[]
+}
+
+export interface RootMetadata {
+    projectName: string
+    uiTreeDirAlwaysSticky: boolean
+}
+

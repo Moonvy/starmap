@@ -1,10 +1,10 @@
 // typescript 定义全局变量 __starmap__
 interface Window {
     __starmap__: {
-        codeUnit: import("../../../core/Gen/lib/unitTreeToJSON").CodeUnitJSON
-        unitsFlat: import("../../../core/Gen/lib/unitTreeToJSON").CodeUnitJSON[]
-        unitsTree: import("../../../core/Gen/lib/unitTreeToJSON").CodeUnitJSON[]
-        rootMetadata: import("../../../core/Gen/lib/createRootMetadata").RootMetadata
+        codeUnit: import("../../../core/Gen/CodeUnit.type").CodeUnitJSON
+        unitsFlat: import("../../../core/Gen/CodeUnit.type").CodeUnitJSON[]
+        unitsTree: import("../../../core/Gen/CodeUnit.type").CodeUnitJSON[]
+        rootMetadata: import("../../../core/Gen/CodeUnit.type").RootMetadata
         vueMetadata: import("vue-docgen-api").ComponentDoc | null
 
         __vue_router__: import("vue-router").Router

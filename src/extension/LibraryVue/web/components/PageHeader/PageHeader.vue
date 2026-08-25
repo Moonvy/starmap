@@ -11,8 +11,8 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, PropType } from "vue"
-import { CodeUnitJSON } from "../../../../../core/Gen/lib/unitTreeToJSON"
+import { defineComponent, type PropType } from "vue"
+import type { CodeUnitJSON } from "../../../../../core/Gen/CodeUnit.type"
 
 export default defineComponent({
     name: "StarmapPageHeader",

@@ -1,8 +1,7 @@
-import { CodeUnit } from "../CodeUnit"
+import type { CodeUnit } from "../CodeUnit"
+import type { CodeUnitJSON } from "../CodeUnit.type"
 
-export type CodeUnitJSON = ReturnType<CodeUnit["toJSON"]> & {
-    children?: CodeUnitJSON[]
-}
+export type { CodeUnitJSON }
 
 /**
  * 把已经结构化的 units 树转换为可序列化对象

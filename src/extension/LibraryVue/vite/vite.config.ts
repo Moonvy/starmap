@@ -3,10 +3,12 @@ import vue from "@vitejs/plugin-vue"
 import { defineConfig } from "vite"
 
 import { getLibraryVueRoot, getPackageRoot } from "../../../utils/packagePath"
+import { nodePolyfillPlugin } from "./nodePolyfillPlugin"
 
 export default defineConfig({
     appType: "spa",
     plugins: [
+        nodePolyfillPlugin(),
         vue({
             template: {
                 compilerOptions: {

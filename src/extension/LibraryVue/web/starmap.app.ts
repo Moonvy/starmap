@@ -1,4 +1,4 @@
-import { createApp } from "vue"
+import { createApp, defineAsyncComponent } from "vue"
 
 import "./style/index.ts"
 
@@ -38,7 +38,7 @@ async function createStarmapApp() {
     const globalComponents = window.__starmap__?.__global_components__
     if (globalComponents) {
         for (const { name, component } of globalComponents) {
-            vueApp.component(name, component)
+            vueApp.component(name, defineAsyncComponent(component))
         }
     }
 

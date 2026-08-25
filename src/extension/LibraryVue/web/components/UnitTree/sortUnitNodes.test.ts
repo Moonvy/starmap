@@ -1,4 +1,4 @@
-import type { CodeUnitJSON } from "../../../../../core/Gen/lib/unitTreeToJSON"
+import type { CodeUnitJSON } from "../../../../../core/Gen/CodeUnit.type"
 import { sortUnitNodes } from "./sortUnitNodes"
 
 function createUnitNode(partial: Partial<CodeUnitJSON>): CodeUnitJSON {

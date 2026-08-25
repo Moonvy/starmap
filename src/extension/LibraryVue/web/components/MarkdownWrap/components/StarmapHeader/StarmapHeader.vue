@@ -79,7 +79,7 @@
 
 <script lang="ts">
 import { defineComponent } from "vue"
-import { CodeUnitJSON } from "../../../../../../../core/Gen/lib/unitTreeToJSON"
+import type { CodeUnitJSON } from "../../../../../core/Gen/CodeUnit.type"
 
 export default defineComponent({
     name: "StarmapHeader",
