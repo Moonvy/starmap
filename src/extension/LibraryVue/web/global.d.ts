@@ -9,6 +9,10 @@ interface Window {
 
         __vue_router__: import("vue-router").Router
         __global_components__: { name: string; component: any }[]
+        __user_config__?: any
+        __on_vue_init__?: (vueApp: any, routePath: string) => void | Promise<void>
+        __root_components__?: any[]
+        __vue_plugins__?: any[]
     }
 }
 

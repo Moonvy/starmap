@@ -45,11 +45,18 @@
         >
             <div class="Starmap-Root__resize-handle-line"></div>
         </div>
+
+        <!-- 页面根组件：支持用户在配置中自定义的 rootComponents -->
+        <component
+            v-for="(comp, idx) in resolvedRootComponents"
+            :is="comp"
+            :key="idx"
+        />
     </div>
 </template>
 
 <script lang="ts">
-import { defineComponent } from "vue"
+import { defineComponent, markRaw } from "vue"
 import { fmt } from "fzz"
 import UnitTree from "../components/UnitTree/UnitTree.vue"
 import starmapIcon from "../public/assets/starmap-icon.svg"
@@ -59,6 +66,19 @@ const SIDEBAR_MIN_WIDTH = 160
 const SIDEBAR_MAX_WIDTH = 600
 const SIDEBAR_DEFAULT_WIDTH = 300
 
+/**
+ * 规范化用户配置的根组件，避免 Vue 将组件定义转换为响应式对象
+ * @param components 用户配置中的根组件列表
+ */
+function normalizeRootComponents(components: any): any[] {
+    if (!Array.isArray(components)) return []
+
+    return components.map((item: any) => {
+        const component = item && typeof item === "object" && item.component ? item.component : item
+        return component && typeof component === "object" ? markRaw(component) : component
+    })
+}
+
 export default defineComponent({
     components: { UnitTree },
     data() {
@@ -67,6 +87,8 @@ export default defineComponent({
             unitsTree: window.__starmap__?.unitsTree ?? [],
             /** 根元数据快照，保证 projectName / alwaysSticky 等也能随热更新刷新 */
             rootMetadata: window.__starmap__?.rootMetadata ?? null,
+            /** 根组件列表，从全局配置中获取 */
+            rootComponents: normalizeRootComponents(window.__starmap__?.__root_components__),
             sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
             isResizing: false,
             isCollapsed: false,
@@ -81,6 +103,7 @@ export default defineComponent({
         syncFromGlobalMeta() {
             this.unitsTree = window.__starmap__?.unitsTree ?? []
             this.rootMetadata = window.__starmap__?.rootMetadata ?? null
+            this.rootComponents = normalizeRootComponents(window.__starmap__?.__root_components__)
         },
         toggleTheme() {
             this.isDarkTheme = !this.isDarkTheme
@@ -159,6 +182,10 @@ export default defineComponent({
         },
         isHelpActive(): boolean {
             return this.selectedId === "starmap-usege"
+        },
+        /** 解析后的根组件列表 */
+        resolvedRootComponents(): any[] {
+            return this.rootComponents || []
         },
     },
 })

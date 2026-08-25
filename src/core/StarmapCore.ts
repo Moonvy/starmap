@@ -141,8 +141,8 @@ async function initConfig(inputConfig: IStarmapConfig) {
         defaults: <any>{ _v1: 0 },
     })
 
-    // console.log(">> c12:", { configFile, layers, config })
     if (configFile) {
+        config.configFile = configFile
         console.log(...fmt("<Starmap|configFile>", configFile))
     }
 

@@ -3,6 +3,7 @@ import { StarmapCore } from "../../core/StarmapCore"
 
 import path from "node:path"
 import fsExtra from "fs-extra"
+
 import { CodeUnit } from "../../core/Gen/CodeUnit"
 import { outputTemplate } from "./lib/outputTemplate"
 import { createViteServer } from "./vite/createViteServer"
@@ -99,10 +100,14 @@ async function generateCodeRoot(core: StarmapCore) {
     const metadataTsPath = path.join(core.config.outputDir!, "metadata.ts")
     outputTemplate("root.metadata.ts", metadataTsPath)
 
+    // 输出根目录 user-config.ts 文件
+    const userConfigTsPath = path.join(core.config.outputDir!, "user-config.ts")
+    outputUserConfig(core, userConfigTsPath)
+
     // 输出根目录 global-components.ts
     const globalComponentsTsPath = path.join(core.config.outputDir!, "global-components.ts")
     outputTemplate("global-components.ts", globalComponentsTsPath, {
-        globalComponents: await createGlobalComponentsCode(core.gen.allUnits.flat),
+        globalComponents: await createGlobalComponentsCode(core.gen.allUnits.flat, core.config.rootPath),
     })
 
     // 输出根目录 router.ts 文件
@@ -317,4 +322,78 @@ async function outputVueMetadataIfNeeded(codeUnit: CodeUnit, unitPath: string, c
     } catch {
         // vue-docgen 失败时静默跳过，不影响主流程
     }
+}
+
+/**
+ * 输出用户配置脚本 user-config.ts
+ *
+ * 如果存在 starmap.config 文件，则导入它并提取 onVueInit、rootComponents、vuePlugins 等配置；
+ * 否则提供默认空配置。
+ *
+ * @param core StarmapCore 实例
+ * @param outputPath 输出文件路径
+ */
+function outputUserConfig(core: StarmapCore, outputPath: string) {
+    const configFile = core.config.configFile
+    let content = ""
+
+    if (configFile) {
+        // 使用 posix 格式路径，确保跨平台 import 正常
+        const normalizedConfigPath = configFile.replace(/\\/g, "/")
+        content = `import * as userConfigModule from "${normalizedConfigPath}"
+
+// 同时兼容默认导出、config 命名导出和直接导出的配置对象
+const userConfig = userConfigModule.default ?? userConfigModule.config ?? userConfigModule
+
+// 兼容旧配置中使用的 onInitVue 命名
+export const onVueInit = userConfig?.onVueInit ?? userConfig?.onInitVue
+export const rootComponents = userConfig?.rootComponents || []
+export const vuePlugins = userConfig?.vuePlugins || []
+
+// 挂载到全局对象 __starmap__
+// @ts-ignore
+window.__starmap__ = window.__starmap__ || {}
+// @ts-ignore
+window.__starmap__.__user_config__ = userConfig || {}
+// @ts-ignore
+window.__starmap__.__on_vue_init__ = onVueInit
+// @ts-ignore
+window.__starmap__.__root_components__ = rootComponents
+// @ts-ignore
+window.__starmap__.__vue_plugins__ = vuePlugins
+
+// 监听热更新，当配置文件发生变化时通知视图更新
+// @ts-ignore
+if (import.meta.hot) {
+    // @ts-ignore
+    import.meta.hot.accept((newModule) => {
+        if (newModule) {
+            window.dispatchEvent(new CustomEvent("starmap:meta-updated"))
+        }
+    })
+}
+
+export default userConfig
+`
+    } else {
+        content = `export const onVueInit = undefined
+export const rootComponents = []
+export const vuePlugins = []
+
+// @ts-ignore
+window.__starmap__ = window.__starmap__ || {}
+// @ts-ignore
+window.__starmap__.__user_config__ = {}
+// @ts-ignore
+window.__starmap__.__on_vue_init__ = undefined
+// @ts-ignore
+window.__starmap__.__root_components__ = []
+// @ts-ignore
+window.__starmap__.__vue_plugins__ = []
+
+export default {}
+`
+    }
+
+    outputFileWithCache(outputPath, content)
 }

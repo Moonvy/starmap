@@ -2,6 +2,7 @@ import { CodeUnit } from "../../../core/Gen/CodeUnit"
 import { init, parse } from "es-module-lexer"
 import path from "node:path"
 import fs from "node:fs/promises"
+import fsSync from "node:fs"
 
 /** 全局组件条目 */
 export interface GlobalComponentEntry {
@@ -9,6 +10,31 @@ export interface GlobalComponentEntry {
     name: string
     /** 组件的 import 绝对路径（指向项目源码中的 .vue 文件） */
     importPath: string
+}
+
+/**
+ * 从文件所在目录向上查找最近的 package.json
+ *
+ * @param filePath 组件文件的绝对路径
+ * @param rootPath Starmap 扫描的项目根目录，不能越过此目录
+ */
+export function findNearestPackageRoot(filePath: string, rootPath: string): string | undefined {
+    const projectRoot = path.resolve(rootPath)
+    let currentDir = path.dirname(path.resolve(filePath))
+
+    while (true) {
+        const relativePath = path.relative(projectRoot, currentDir)
+        if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) return undefined
+
+        if (fsSync.existsSync(path.join(currentDir, "package.json"))) {
+            return currentDir
+        }
+
+        if (currentDir === projectRoot) return undefined
+        const parentDir = path.dirname(currentDir)
+        if (parentDir === currentDir) return undefined
+        currentDir = parentDir
+    }
 }
 
 /** 同一次生成流程内复用解析结果，避免 unit 生成与 global-components 重复扫盘 */

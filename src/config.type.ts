@@ -34,4 +34,16 @@ export interface IStarmapConfig {
     viteConfig?: any
     /** vue 插件列表，会被当做 Vue 插件全局注册 */
     vuePlugins?: any[]
+
+    /** 配置文件路径 */
+    configFile?: string
+
+    /** 在 Vue 初始化时调用
+     * @param vueApp Vue 应用实例
+     * @param routePath 路由路径
+     */
+    onVueInit?(vueApp: any, routePath: string): void | Promise<void>
+
+    /** 在页面根目录下添加全局组件，会在根页面 Root.vue 中自动渲染 */
+    rootComponents?: any[]
 }

@@ -44,7 +44,29 @@ async function createStarmapApp() {
 
     // 由 root.html 引入的 router.ts 挂载
     const router = window.__starmap__?.__vue_router__
-    vueApp.use(router)
+    if (router) {
+        vueApp.use(router)
+    }
+
+    // 挂载用户配置中的 Vue 插件
+    const userConfig = window.__starmap__?.__user_config__
+    const vuePlugins = window.__starmap__?.__vue_plugins__ || userConfig?.vuePlugins
+    if (Array.isArray(vuePlugins)) {
+        for (const plugin of vuePlugins) {
+            if (Array.isArray(plugin)) {
+                vueApp.use(plugin[0], ...plugin.slice(1))
+            } else if (plugin) {
+                vueApp.use(plugin)
+            }
+        }
+    }
+
+    // 执行用户配置的 onVueInit 回调（支持异步操作）
+    const onVueInit = window.__starmap__?.__on_vue_init__ || userConfig?.onVueInit
+    if (typeof onVueInit === "function") {
+        const routePath = router?.currentRoute?.value?.path || window.location.pathname || "/"
+        await onVueInit(vueApp, routePath)
+    }
 
     // 挂载
     vueApp.mount(rootEl)

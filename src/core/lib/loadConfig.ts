@@ -54,55 +54,57 @@ export async function loadConfig(options: LoadConfigOptions): Promise<LoadConfig
 
     if (configFile) {
         const ext = path.extname(configFile)
-        if (ext === ".json") {
-            const content = await fsex.readFile(configFile, "utf-8")
-            fileConfig = JSON.parse(content)
-        } else if (ext === ".js" || ext === ".mjs" || ext === ".cjs") {
-            const fileUrl = pathToFileURL(configFile).href
-            const mod = await import(fileUrl)
-            fileConfig = mod.default ?? mod
-        } else if (ext === ".ts") {
-            // 首先尝试直接导入，以支持 Bun 环境或开启了直接运行 ts 的 Node 环境
-            try {
+        try {
+            if (ext === ".json") {
+                const content = await fsex.readFile(configFile, "utf-8")
+                fileConfig = JSON.parse(content)
+            } else if (ext === ".js" || ext === ".mjs" || ext === ".cjs") {
                 const fileUrl = pathToFileURL(configFile).href
                 const mod = await import(fileUrl)
-                fileConfig = mod.default ?? mod
-            } catch (e) {
-                // 如果直接加载失败，说明当前 Node 环境不支持原生加载 ts，需要降级到转译加载
-                const ts = await import("typescript")
-                    .then((m) => m.default || m)
-                    .catch(() => null)
-
-                if (!ts) {
-                    throw new Error(
-                        `Failed to load typescript compiler to parse '${configFile}'. ` +
-                            `Please install 'typescript' or run in Bun environment.`
-                    )
-                }
-
-                const tsCode = await fsex.readFile(configFile, "utf-8")
-                const transpileResult = ts.transpileModule(tsCode, {
-                    compilerOptions: {
-                        module: ts.ModuleKind.ESNext,
-                        target: ts.ScriptTarget.ES2022,
-                    },
-                })
-
-                // 将编译出的 JS 内容写入同一个目录下的临时 mjs 文件，确保相对路径引用一致
-                const tempFilePath = `${configFile}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}.mjs`
-                await fsex.writeFile(tempFilePath, transpileResult.outputText, "utf-8")
-
+                fileConfig = mod.default ?? mod.config ?? mod
+            } else if (ext === ".ts") {
+                // 首先尝试直接导入，以支持 Bun 环境或开启了直接运行 ts 的 Node 环境
                 try {
-                    const fileUrl = pathToFileURL(tempFilePath).href
+                    const fileUrl = pathToFileURL(configFile).href
                     const mod = await import(fileUrl)
-                    fileConfig = mod.default ?? mod
-                } finally {
-                    // 加载完后，无论成功与否都要删除临时文件
-                    if (await fsex.pathExists(tempFilePath)) {
-                        await fsex.unlink(tempFilePath)
+                    fileConfig = mod.default ?? mod.config ?? mod
+                } catch (e) {
+                    // 如果直接加载失败，降级到转译加载
+                    const ts = await import("typescript")
+                        .then((m) => m.default || m)
+                        .catch(() => null)
+
+                    if (ts) {
+                        const tsCode = await fsex.readFile(configFile, "utf-8")
+                        const transpileResult = ts.transpileModule(tsCode, {
+                            compilerOptions: {
+                                module: ts.ModuleKind.ESNext,
+                                target: ts.ScriptTarget.ES2022,
+                            },
+                        })
+
+                        // 将编译出的 JS 内容写入同一个目录下的临时 mjs 文件，确保相对路径引用一致
+                        const tempFilePath = `${configFile}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}.mjs`
+                        await fsex.writeFile(tempFilePath, transpileResult.outputText, "utf-8")
+
+                        try {
+                            const fileUrl = pathToFileURL(tempFilePath).href
+                            const mod = await import(fileUrl)
+                            fileConfig = mod.default ?? mod.config ?? mod
+                        } catch {
+                            // 配置文件可能依赖了 Vue / 前端模块，在 Node 环境下执行失败属正常现象
+                            // 此时保留空配置，前端 Vite 运行时会通过 user-config.ts 完整加载
+                        } finally {
+                            // 加载完后，无论成功与否都要删除临时文件
+                            if (await fsex.pathExists(tempFilePath)) {
+                                await fsex.unlink(tempFilePath)
+                            }
+                        }
                     }
                 }
             }
+        } catch {
+            // 静默处理，避免非关键报错阻塞 CLI
         }
     }
 

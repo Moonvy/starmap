@@ -20,10 +20,6 @@ vi.mock("node:child_process", () => ({
     }),
 }))
 
-vi.mock("../lib/createGlobalComponentsCode", () => ({
-    createGlobalComponentsCode: vi.fn(async () => ""),
-}))
-
 vi.mock("fs-extra", () => ({
     default: {
         copySync: vi.fn(),
@@ -111,6 +107,53 @@ describe("LibraryVue", () => {
         expect(outputFileWithCache).toHaveBeenCalledWith(
             path.join(outputDir, "package.json"),
             expect.stringContaining('"name": "@moonvy/starmap-output"')
+        )
+
+        expect(outputFileWithCache).toHaveBeenCalledWith(
+            path.join(outputDir, "user-config.ts"),
+            expect.stringContaining("export const onVueInit = undefined")
+        )
+    })
+
+    test("当存在 configFile 时，generateTree 应该输出导入了配置文件的 user-config.ts", async () => {
+        const { outputFileWithCache } = await import("../../../utils/fs/outputFileWithCache")
+        const eventHub = createTestEventHub()
+        const outputDir = "/tmp/starmap-output"
+        const configFile = "/path/to/starmap.config.ts"
+
+        const core = {
+            logger: {
+                log: vi.fn(),
+                debug: vi.fn(),
+                error: vi.fn(),
+            },
+            config: {
+                outputDir,
+                configFile,
+            },
+            eventHub,
+            gen: {
+                allUnits: {
+                    flat: [],
+                },
+            },
+        } as any
+
+        await LibraryVue()(core)
+
+        await eventHub.emitAsync(StarmapCoreEvents.generateTree, {
+            gen: core.gen,
+            starmapCore: core,
+        })
+
+        expect(outputFileWithCache).toHaveBeenCalledWith(
+            path.join(outputDir, "user-config.ts"),
+            expect.stringContaining(`import * as userConfigModule from "/path/to/starmap.config.ts"`)
+        )
+
+        expect(outputFileWithCache).toHaveBeenCalledWith(
+            path.join(outputDir, "user-config.ts"),
+            expect.stringContaining("userConfigModule.default ?? userConfigModule.config ?? userConfigModule")
         )
     })
 })
