@@ -69,15 +69,59 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 /**
- * 解析单个 CodeUnit 下的全局组件
+ * 检查目录是否存在
+ * @param dirPath 目录绝对路径
+ */
+async function dirExists(dirPath: string): Promise<boolean> {
+    try {
+        const stat = await fs.stat(dirPath)
+        return stat.isDirectory()
+    } catch {
+        return false
+    }
+}
+
+/**
+ * 递归扫描 sample 目录下的所有 .vue 组件
  *
- * 按三条规则检查：
+ * @param sampleDirPath sample 目录绝对路径
+ */
+async function resolveSampleComponents(sampleDirPath: string): Promise<GlobalComponentEntry[]> {
+    const entries: GlobalComponentEntry[] = []
+
+    async function scan(currentDir: string) {
+        try {
+            const dirents = await fs.readdir(currentDir, { withFileTypes: true })
+            for (const dirent of dirents) {
+                const fullPath = path.join(currentDir, dirent.name)
+                if (dirent.isDirectory()) {
+                    await scan(fullPath)
+                } else if (dirent.isFile() && dirent.name.endsWith(".vue")) {
+                    const ext = path.extname(dirent.name)
+                    const baseName = path.basename(dirent.name, ext)
+                    entries.push({
+                        name: baseName,
+                        importPath: fullPath,
+                    })
+                }
+            }
+        } catch {}
+    }
+
+    await scan(sampleDirPath)
+    return entries
+}
+
+/**
+ * 解析单个 CodeUnit 下的组件
+ *
+ * 按四条规则检查：
  * 1. 与文件夹同名的 .vue 文件
  * 2. index.vue
  * 3. index.ts 导出的 .vue 文件
+ * 4. sample 文件夹下的 .vue 组件
  *
  * @param unit CodeUnit 实例
- * @returns 解析出的全局组件条目列表
  */
 export async function resolveUnitComponents(unit: CodeUnit): Promise<GlobalComponentEntry[]> {
     const cacheKey = unit.dirFullPath
@@ -110,12 +154,14 @@ async function resolveUnitComponentsUncached(unit: CodeUnit): Promise<GlobalComp
     const sameNameVuePath = path.join(dirFullPath, `${dirName}.vue`)
     const indexVuePath = path.join(dirFullPath, "index.vue")
     const indexTsPath = path.join(dirFullPath, "index.ts")
+    const sampleDirPath = path.join(dirFullPath, "sample")
 
-    // 并行探测三个候选路径
-    const [sameNameExists, indexVueExists, indexTsExists] = await Promise.all([
+    // 并行探测四个候选路径
+    const [sameNameExists, indexVueExists, indexTsExists, sampleDirExists] = await Promise.all([
         fileExists(sameNameVuePath),
         fileExists(indexVuePath),
         fileExists(indexTsPath),
+        dirExists(sampleDirPath),
     ])
 
     // 规则 1: 与文件夹同名的 .vue 文件（如 button/button.vue）
@@ -138,6 +184,12 @@ async function resolveUnitComponentsUncached(unit: CodeUnit): Promise<GlobalComp
     if (indexTsExists) {
         const indexTsEntries = await resolveIndexTsExports(unit, indexTsPath)
         entries.push(...indexTsEntries)
+    }
+
+    // 规则 4: sample 文件夹下的 .vue 组件
+    if (sampleDirExists) {
+        const sampleEntries = await resolveSampleComponents(sampleDirPath)
+        entries.push(...sampleEntries)
     }
 
     return entries

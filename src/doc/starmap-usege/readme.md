@@ -64,6 +64,30 @@ props: {
 this.$emit("change", newValue, oldValue)
 ```
 
+### 示例组件（Sample 文件夹）
+
+在 CodeUnit 目录下如果存在 `sample` 文件夹，`sample` 及其子目录下的所有 Vue 组件会被自动注册为该 CodeUnit 的可用组件（组件名为去除 `.vue` 扩展名的文件名）。
+
+目录结构示例：
+
+```text
+Surface/
+├── readme.md
+└── sample/
+    ├── SurfacePreview.vue
+    └── variants/
+        └── HighlightBox.vue
+```
+
+在 `Surface/readme.md` 中即可直接作为 Vue 组件标签使用：
+
+```html
+<SurfacePreview />
+
+<HighlightBox />
+```
+
+
 ## 标题
 
 使用 `#` 创建不同级别的标题

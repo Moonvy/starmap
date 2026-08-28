@@ -16,7 +16,7 @@ import type { GlobalComponentEntry } from "./resolveUnitComponents"
  * - unit 下如果有 index.ts，分析它的导出（使用 es-module-lexer），每个 vue 文件的导出都作为一个全局组件
  *   组件名遵照导出文件的名字
  *
- *
+ * - unit 文件夹下如果有 sample 文件夹，sample 及其子目录下的 vue 组件都会注册为组件（组件名是 vue 文件名）
  *
  * @param units 所有 CodeUnit 列表
  * @param rootPath Starmap 扫描的项目根目录
