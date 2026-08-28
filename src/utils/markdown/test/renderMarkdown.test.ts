@@ -131,3 +131,14 @@ test("renderMarkdown 本地 markdown 链接重定向", async () => {
     expect(html).toContain('href="/units/array#options"')
     expect(html).toContain('href="https://google.com"')
 })
+
+test("renderMarkdown 解析 StarmapCssVars 相对路径并收集依赖", async () => {
+    const md = `<StarmapCssVars src="./var.css" />`
+    const filePath = "/Users/test/project/src/component/readme.md"
+    const { html, dependencies } = await renderMarkdown(md, { filePath })
+
+    const expectedCssPath = path.resolve("/Users/test/project/src/component", "./var.css")
+    expect(html).toContain(`src="${expectedCssPath}"`)
+    expect(dependencies).toContain(expectedCssPath)
+})
+

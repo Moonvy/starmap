@@ -687,3 +687,18 @@ Starmap 提供一些自带的组件，可以直接使用，它们的 `v-model` �
 <StarmapInput number v-model="dataNumber"/>
 
 {{dataText}}
+
+### CSS 变量展示与编辑
+
+使用 `<StarmapCssVars src="./var.css" />` 组件可以可视化展示和编辑指定 CSS 文件中的变量。
+
+- 支持色块指示和原格式颜色调整（HEX、RGB、RGBA 等）
+- 支持打开“编辑变量”开关后在线修改并写回 `var.css` 文件
+- 支持关键词搜索和复制变量名
+
+```vue
+<StarmapCssVars src="./var.css" />
+```
+
+<StarmapCssVars src="./var.css" />
+

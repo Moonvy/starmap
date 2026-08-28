@@ -1,0 +1,16 @@
+/* 主题颜色配置 */
+:root {
+    --c-primary: #3b82f6; /* 主题色 */
+    --c-action-bk: rgb(67, 80, 109); /* 动作背景色 */
+    --c-text-main: #1f2937; /* 主要文字 */
+    --c-bg-card: rgba(255, 255, 255, 0.9); /* 卡片背景 */
+    --font-size-base: 14px;
+    --border-radius-base: 8px;
+}
+
+/* 暗黑模式变量 */
+.theme-dark {
+    --c-action-bk: rgb(45, 55, 78);
+    --c-text-main: #f3f4f6;
+    --c-bg-card: #181825;
+}

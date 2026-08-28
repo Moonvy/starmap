@@ -206,6 +206,16 @@ export async function renderMarkdown(
     if (options?.filePath) {
         html = resolveHtmlMediaPaths(html, options.filePath)
 
+        // 收集 StarmapCssVars 引用的 CSS 依赖文件
+        const cssVarsMatches = html.matchAll(/<(?:StarmapCssVars|starmap-css-vars)[^>]+src=["']([^"']+)["'][^>]*>/gi)
+        for (const m of cssVarsMatches) {
+            const cssPath = m[1]
+            if (cssPath && !dependencies?.includes(cssPath)) {
+                dependencies = dependencies || []
+                dependencies.push(cssPath)
+            }
+        }
+
         // 处理本地 markdown 链接的重定向
         const codeUnits = options.codeUnits || (typeof window !== "undefined" ? (window as any).__starmap__?.unitsFlat : undefined)
         if (codeUnits && codeUnits.length > 0) {
@@ -217,7 +227,7 @@ export async function renderMarkdown(
 }
 
 /**
- * 处理 HTML 文本，将图片、视频资源转换为绝对路径
+ * 处理 HTML 文本，将图片、视频及 StarmapCssVars 等资源转换为绝对路径
  */
 export function resolveHtmlMediaPaths(html: string, filePath: string) {
     const dir = dirname(filePath)
@@ -231,8 +241,8 @@ export function resolveHtmlMediaPaths(html: string, filePath: string) {
 
     let resultHtml = html
 
-    // 匹配 img, video, source 标签中的 src 属性
-    resultHtml = resultHtml.replace(/<(img|video|source)[^>]+src=["']([^"']+)["'][^>]*>/gi, (match, tag, src) => {
+    // 匹配 img, video, source, StarmapCssVars 标签中的 src 属性
+    resultHtml = resultHtml.replace(/<(img|video|source|StarmapCssVars|starmap-css-vars)[^>]+src=["']([^"']+)["'][^>]*>/gi, (match, tag, src) => {
         const absPath = resolvePath(src)
         if (absPath === src) return match
         return match.replace(`src="${src}"`, `src="${absPath}"`).replace(`src='${src}'`, `src='${absPath}'`)

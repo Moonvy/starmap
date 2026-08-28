@@ -5,6 +5,7 @@ import defaultViteConfig from "./vite.config"
 import { merge, fmt } from "fzz"
 import path from "node:path"
 import fsex from "fs-extra"
+import { starmapApiPlugin } from "./starmapApiPlugin"
 
 /**
  * 创建并返回一个 Vite 开发服务器实例
@@ -37,6 +38,7 @@ export async function createViteServer(options: { core: StarmapCore; viteConfig?
             // 告诉 Vite 不要对 .starmap 进行依赖预构建（不进行强缓存）
             exclude: [".starmap"],
         },
+        plugins: [starmapApiPlugin(options.core)],
     }
 
     let finViteConfig: ViteUserConfig = merge(
@@ -60,6 +62,14 @@ export async function createViteServer(options: { core: StarmapCore; viteConfig?
         options.core.config?.viteConfig || {},
         options.viteConfig || {},
     )
+
+    // 显式合并所有 plugins 数组，避免 merge 导致数组覆盖
+    finViteConfig.plugins = [
+        ...(defaultViteConfig.plugins || []),
+        ...(coreViteConfig.plugins || []),
+        ...(options.core.config?.viteConfig?.plugins || []),
+        ...(options.viteConfig?.plugins || []),
+    ].flat().filter(Boolean)
 
     // 合并多个 Vue 插件的 isCustomElement 回调，确保所有自定义元素判断都生效
     // mergeVueIsCustomElement(finViteConfig)
