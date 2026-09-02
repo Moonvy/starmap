@@ -7,7 +7,7 @@
         }"
         :modifer
     >
-        <div class="preview-warp-box" v-if="mode == 'preview'">
+        <div class="preview-warp-box starmap-isolate" v-if="mode == 'preview'">
             <slot name="preview"></slot>
         </div>
         <div class="code-warp-box" :class="{ 'has-scrollbar': hasCodeWrapScrollBar, 'is-expanded': expandCodeBox }">
@@ -72,12 +72,11 @@
         flex: none;
         gap: 6px;
         padding: 0px 16px;
-        height: 32px;
+        height: 26px;
         box-sizing: border-box;
         font-size: 13px;
         font-weight: 500;
         color: rgba(90, 100, 125, 0.9);
-        background: rgba(213, 221, 239, 0.25);
         text-shadow: 0 1px rgba(255, 255, 255, 0.9);
         hd-icon {
             font-size: 16px;
@@ -91,7 +90,7 @@
             position: absolute;
             top: 0;
             right: 0px;
-            height: 30px;
+            height: 26px;
             z-index: 1;
             display: flex;
             place-items: center;
@@ -203,7 +202,6 @@
 .is-dark-theme .StarmapCodeWrap {
     .title-bar {
         color: rgba(155, 168, 195, 0.9);
-        background: rgba(28, 32, 52, 0.7);
         text-shadow: none;
     }
 }
@@ -264,8 +262,13 @@
         display: flex;
         flex-direction: column;
         flex-wrap: wrap;
-        border: 3px solid rgb(245 246 252);
+        border: 3px solid var(--md-code-bk-color, rgb(245 246 252));
         border-bottom: none;
+
+        .is-dark-theme & {
+            background: #191927;
+            border-color: rgb(28 32 52);
+        }
     }
 
     /* 水平布局 */
@@ -274,9 +277,13 @@
         display: flex;
         justify-content: flex-start;
         gap: 1em;
-        background-color: rgb(245 246 252);
+        background-color: var(--md-code-bk-color, rgb(245 246 252));
         border-radius: 14px;
         overflow: hidden;
+
+        .is-dark-theme & {
+            background-color: rgb(28 32 52);
+        }
 
         & > * {
             flex: auto;

@@ -1,3 +1,4 @@
+/* Markdown 渲染根容器基础配置与 CSS 变量 */
 .starmap-markdown-render {
     --md-content-font: var(--starmap-content-font);
     --md-head-font: rgb(46 56 79);
@@ -5,6 +6,7 @@
 
     --md-code-scroll-bar-thumb-bk: #d5d6dd;
     --md-code-scroll-bar-thumb-bk-hover: #c9cbd5;
+    --md-code-bk-color: rgb(245 246 252);
 
     --md-text-color: rgb(63, 64, 64);
     --md-text-gray-color: rgb(117, 117, 117);
@@ -30,7 +32,14 @@
     font-family: var(--md-content-font);
 }
 
-.starmap-markdown-render {
+/* 自定义组件隔离标记类：阻断 Markdown 容器的非必要文字排版继承 */
+.starmap-isolate {
+    line-height: normal;
+}
+
+/* 使用原生 CSS @scope 甜甜圈作用域：在 .starmap-markdown-render 生效，遇到 .starmap-isolate 停止穿透 */
+@scope (.starmap-markdown-render) to (.starmap-isolate) {
+    /* ===== 标题 ===== */
     h1,
     h2,
     h3,
@@ -106,6 +115,7 @@
         font-size: 1.125em;
     }
 
+    /* ===== 段落与正文 ===== */
     p {
         line-height: 2;
         margin: 1em 0;
@@ -125,11 +135,8 @@
         margin-top: 2em;
         margin-bottom: 2em;
     }
-}
 
-/* 列表 */
-.starmap-markdown-render {
-    /* 建议包裹在一个特定的类名下，避免污染全局全局 ul 样式 */
+    /* ===== 列表 ===== */
     ul {
         margin-top: 0;
         margin-bottom: 16px;
@@ -180,24 +187,13 @@
     ul ul ul {
         list-style-type: "- ";
     }
-}
 
-/* 折叠 (Details / Accordion) - 类似 Mintlify 风格 */
-.starmap-markdown-render {
+    /* ===== 折叠 (Details / Accordion) - 类似 Mintlify 风格 ===== */
     --md-details-border: rgb(229 231 235);
     --md-details-bk: transparent;
     --md-details-hover-bk: rgba(0, 0, 0, 0.02);
     --md-details-open-bk: rgb(245 246 252 / 43%);
     --md-details-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-
-    &.is-dark-theme,
-    .is-dark-theme & {
-        --md-details-border: rgb(46 46 72);
-        --md-details-bk: transparent;
-        --md-details-hover-bk: rgba(255, 255, 255, 0.02);
-        --md-details-open-bk: rgba(255, 255, 255, 0.01);
-        --md-details-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
-    }
 
     details {
         border: 1px solid var(--md-details-border);
@@ -251,56 +247,45 @@
         }
 
         &:hover {
-            color: var(--md-head-color);
+            background-color: var(--md-details-hover-bk);
         }
 
-        /* 纯 CSS 使用 mask 渲染高颜值的 Chevron 箭头 */
         &::after {
             content: "";
-            display: block;
-            width: 18px;
-            height: 18px;
-            background-color: currentColor;
-            -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7'/%3E%3C/svg%3E")
-                no-repeat center;
-            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor' stroke-width='2.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M9 5l7 7-7 7'/%3E%3C/svg%3E")
-                no-repeat center;
-            transition:
-                transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            opacity: 0.45;
-            flex-shrink: 0;
-        }
-
-        &:hover::after {
+            width: 7px;
+            height: 7px;
+            border-right: 2px solid var(--md-text-gray-color);
+            border-bottom: 2px solid var(--md-text-gray-color);
+            transform: rotate(-45deg);
+            transition: transform 0.2s ease;
+            margin-right: 4px;
             opacity: 0.8;
+            flex-shrink: 0;
         }
     }
 
     details[open] > summary::after {
-        transform: rotate(90deg);
-        opacity: 0.8;
+        transform: rotate(45deg);
     }
 
-    /* 对 details 内部除 summary 之外的所有直接子元素应用边距，使其内容精美排版 */
-    details > :not(summary) {
-        padding-left: 16px;
-        padding-right: 16px;
+    details > *:not(summary) {
+        margin-left: 16px;
+        margin-right: 16px;
+
+        &:first-of-type {
+            margin-top: 14px;
+        }
+
+        &:last-child {
+            margin-bottom: 16px;
+        }
     }
 
-    /* 展开后，首个内容元素距离顶部 summary 边框的间距 */
-    details > summary + :not(summary) {
-        margin-top: 12px;
+    details[open] > summary {
+        color: var(--md-head-color);
     }
 
-    /* 最后一个直接子元素距离底部的间距 */
-    details > :not(summary):last-child {
-        margin-bottom: 16px;
-    }
-}
-
-/* 行内代码 */
-.starmap-markdown-render {
+    /* ===== 行内代码与引用 ===== */
     :not(pre) > code {
         font-family: var(--starmap-code-font);
         background-color: var(--starmap-code-bk);
@@ -346,9 +331,8 @@
             color: var(--md-blockquote-head-color);
         }
     }
-}
-/* 链接 */
-.starmap-markdown-render {
+
+    /* ===== 链接 ===== */
     a {
         color: var(--md-link-color);
         text-decoration: underline;
@@ -364,14 +348,11 @@
             text-decoration-thickness: 2px;
         }
     }
-}
 
-/* 表格 */
-.starmap-markdown-render {
-    /* 单线风格 */
+    /* ===== 表格 ===== */
     table {
-        border-collapse: separate; /* 必须设置为 separate */
-        border-spacing: 0; /* 消除单元格间距 */
+        border-collapse: separate;
+        border-spacing: 0;
         border: 1px solid var(--md-table-border-color);
         overflow: hidden;
         border-radius: 8px;
@@ -380,43 +361,41 @@
         margin-top: 1em;
         margin-bottom: 1em;
         color: var(--md-text-color);
-    }
 
-    thead {
-        font-size: 0.875em;
-        font-weight: 400;
-        color: var(--md-table-head-text-color);
-        tr {
-            border: 0 solid var(--md-table-head-border-color);
+        thead {
+            font-size: 0.875em;
+            font-weight: 400;
+            color: var(--md-table-head-text-color);
+            tr {
+                border: 0 solid var(--md-table-head-border-color);
+                border-bottom-width: 1px;
+                background-color: var(--md-table-head-bk-color);
+            }
+            th {
+                text-align: left;
+                font-weight: 500;
+                background-color: var(--md-table-head-bk);
+            }
+        }
+
+        tbody tr {
+            font-size: 1em;
+        }
+
+        th,
+        td {
+            border: none;
+            padding: 0.125em 1em;
+            border: 0 solid var(--md-table-row-border-color);
             border-bottom-width: 1px;
-            background-color: var(--md-table-head-bk-color);
         }
-        th {
-            text-align: left;
-            font-weight: 500;
-            background-color: var(--md-table-head-bk);
+
+        tr:last-child td {
+            border-bottom: none;
         }
     }
 
-    tbody tr {
-        font-size: 1em;
-    }
-
-    th,
-    td {
-        border: none;
-        padding: 0.125em 1em;
-        border: 0 solid var(--md-table-row-border-color);
-        border-bottom-width: 1px;
-    }
-
-    tr:last-child td {
-        border-bottom: none;
-    }
-}
-
-/* 行内标记 */
-.starmap-markdown-render {
+    /* ===== 行内标记 ===== */
     --md-kbd-border-color: #a4a4a6;
     --md-kbd-text-color: #555556;
     --md-kbd-bk-color: #f8fafc;
@@ -437,243 +416,318 @@
             0 2px 3px #616b7c00;
         margin: 0.25em;
     }
-}
 
-/* 代码块 */
-.starmap-markdown-render .code-warp-box {
-    --md-code-bk-color: rgb(245 246 252);
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    margin-top: 1em;
-    border-radius: 12px;
-    overflow: hidden;
-    box-sizing: border-box;
-    max-height: 512px;
-
-    &.is-expanded {
-        max-height: none;
-    }
-
-    pre.shiki {
+    /* ===== 代码块 ===== */
+    .code-warp-box {
+        --md-code-bk-color: rgb(245 246 252);
+        display: flex;
+        flex-direction: column;
         position: relative;
-        flex: auto;
-        padding: 1.25em 1.5em;
-        margin: 0;
-        overflow-x: auto;
-        font-family: var(--md-code-font);
-        font-size: 0.9em;
-        line-height: 1.6;
-        background-color: var(--md-code-bk-color) !important;
+        margin-top: 1em;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 3px solid var(--md-code-bk-color);
+        max-height: 400px;
+        background-color: var(--md-code-bk-color);
 
-        code {
-            padding: 0;
-            background: none;
-            color: inherit;
-            font-size: inherit;
-            border-radius: 0;
+        .has-scrollbar-mask {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            background: linear-gradient(to bottom, transparent 0%, rgb(245 246 252 / 92%) 40%, rgb(245 246 252));
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 12px;
+            box-sizing: border-box;
+            pointer-events: none;
+
+            button {
+                pointer-events: auto;
+                background: rgb(255 255 255 / 80%);
+                backdrop-filter: blur(8px);
+                border: 1px solid rgb(220 225 235);
+                border-radius: 20px;
+                padding: 4px 16px;
+                font-size: 12px;
+                color: rgb(90, 100, 125);
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+                transition: all 0.2s;
+
+                &:hover {
+                    background: #fff;
+                    color: var(--md-link-color);
+                    box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+                }
+            }
+        }
+
+        &.is-expanded {
+            max-height: none !important;
+            /* padding-bottom: 2em; */
+
+            .has-scrollbar-mask {
+                display: none;
+            }
+        }
+
+        &.has-scrollbar {
+            pre.shiki {
+                overflow-y: scroll;
+            }
+        }
+
+        pre.shiki {
+            position: relative;
+            flex: auto;
+            padding: 1.25em 1.5em;
+            margin: 0;
+            overflow-x: auto;
             font-family: var(--md-code-font);
-        }
+            font-size: 0.9em;
+            line-height: 1.6;
+            background-color: var(--md-code-bk-color) !important;
 
-        .highlighted-word {
-            outline: 2px solid #ff8f006e;
-            padding: 1px 3px;
-            border-radius: 4px;
-        }
-
-        /* 滚动条 */
-        &::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        &::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        &::-webkit-scrollbar-thumb {
-            background: var(--md-code-scroll-bar-thumb-bk);
-            border-radius: 4px;
-        }
-        &::-webkit-scrollbar-thumb:hover {
-            background: var(--md-code-scroll-bar-thumb-bk-hover);
-        }
-    }
-}
-
-/* 代码块行高亮 */
-.starmap-markdown-render .code-warp-box {
-    pre.shiki {
-        /* 高亮行：浅蓝底色 + 左侧色条 */
-        .line.highlighted {
-            background-color: rgba(101, 117, 255, 0.08);
-            border-left: 3px solid rgba(101, 117, 255, 0.65);
-            margin-left: -1.5em;
-            padding-left: calc(1.5em - 3px);
-            margin-right: -1.5em;
-            padding-right: 1.5em;
-            display: inline-block;
-            width: calc(100% + 3em);
-            box-sizing: border-box;
-        }
-
-        /* 暗淡行：其余行降低不透明度 */
-        .line.dim {
-            opacity: 0.45;
-            transition: opacity 0.2s;
-        }
-
-        /* 鼠标悬停时恢复暗淡行透明度 */
-        &:hover .line.dim {
-            opacity: 0.7;
-        }
-
-        /* 差异 */
-        code .diff {
-            margin-left: -1.5em;
-            padding-left: calc(1.5em - 3px);
-            margin-right: -1.5em;
-            padding-right: 1.5em;
-            display: inline-block;
-            width: calc(100% + 3em);
-            box-sizing: border-box;
-            position: relative;
-
-            &.add {
-                background-color: rgb(139 238 163 / 20%);
-                border-left: 2px solid rgb(90 188 123);
-                &::before {
-                    content: "+";
-                    position: absolute;
-                    left: 6px;
-                    color: rgb(90 188 123);
-                }
+            code {
+                padding: 0;
+                background: none;
+                color: inherit;
+                font-size: inherit;
+                border-radius: 0;
+                font-family: var(--md-code-font);
             }
-            &.remove {
-                background-color: rgb(241 100 100 / 17%);
-                border-left: 2px solid rgb(238 85 92);
-                &::before {
-                    content: "-";
-                    color: rgb(238 85 92);
-                    position: absolute;
-                    left: 6px;
-                }
+
+            .highlighted-word {
+                outline: 2px solid #ff8f006e;
+                padding: 1px 3px;
+                border-radius: 4px;
+            }
+
+            &::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+            &::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            &::-webkit-scrollbar-thumb {
+                background: var(--md-code-scroll-bar-thumb-bk);
+                border-radius: 4px;
+            }
+            &::-webkit-scrollbar-thumb:hover {
+                background: var(--md-code-scroll-bar-thumb-bk-hover);
             }
         }
-    }
-}
 
-/* 代码块行号 */
-.starmap-markdown-render .code-warp-box {
-    pre.shiki.has-line-numbers {
-        /* 为行号预留左侧空间 */
-        padding-left: 4em;
+        /* 代码块行高亮 */
+        pre.shiki {
+            .line.highlighted {
+                background-color: rgba(101, 117, 255, 0.08);
+                border-left: 3px solid rgba(101, 117, 255, 0.65);
+                margin-left: -1.5em;
+                padding-left: calc(1.5em - 3px);
+                margin-right: -1.5em;
+                padding-right: 1.5em;
+                display: inline-block;
+                width: calc(100% + 3em);
+                box-sizing: border-box;
+            }
 
-        .line {
-            position: relative;
-            /* 使用 CSS counter 生成行号，不需要额外 DOM 元素 */
-            &::before {
-                counter-increment: line-number;
-                content: counter(line-number);
-                position: absolute;
-                left: -4.5em;
-                width: 3em;
-                text-align: right;
-                color: rgba(120, 130, 155, 0.6);
-                font-size: 0.9em;
-                line-height: 1.777777777777778em;
+            .line.dim {
+                opacity: 0.45;
+                transition: opacity 0.2s;
+            }
+
+            &:hover .line.dim {
+                opacity: 0.7;
+            }
+
+            code .diff {
+                margin-left: -1.5em;
+                padding-left: calc(1.5em - 3px);
+                margin-right: -1.5em;
+                padding-right: 1.5em;
+                display: inline-block;
+                width: calc(100% + 3em);
+                box-sizing: border-box;
+                position: relative;
+
+                &.add {
+                    background-color: rgb(139 238 163 / 20%);
+                    border-left: 2px solid rgb(90 188 123);
+                    &::before {
+                        content: "+";
+                        position: absolute;
+                        left: 6px;
+                        color: rgb(90 188 123);
+                    }
+                }
+                &.remove {
+                    background-color: rgb(241 100 100 / 17%);
+                    border-left: 2px solid rgb(238 85 92);
+                    &::before {
+                        content: "-";
+                        color: rgb(238 85 92);
+                        position: absolute;
+                        left: 6px;
+                    }
+                }
+            }
+        }
+
+        /* 代码块行号 */
+        pre.shiki.has-line-numbers {
+            padding-left: 4em;
+
+            .line {
+                position: relative;
+                &::before {
+                    counter-increment: line-number;
+                    content: counter(line-number);
+                    position: absolute;
+                    left: -4.5em;
+                    width: 3em;
+                    text-align: right;
+                    color: rgba(120, 130, 155, 0.6);
+                    font-size: 0.9em;
+                    line-height: 1.777777777777778em;
+                    user-select: none;
+                }
+
+                &:last-child::before {
+                    content: "";
+                }
+            }
+
+            .line.highlighted {
+                margin-left: -3.5em;
+                padding-left: calc(3.5em - 3px);
+                width: calc(100% + 3.5em + 1.5em);
+            }
+        }
+
+        /* CSS 颜色预览色块 */
+        pre.shiki {
+            .shiki-color-preview {
+                display: inline-block;
+                vertical-align: middle;
+                position: relative;
+                width: 0.85em;
+                height: 0.85em;
+                min-width: 11px;
+                min-height: 11px;
+                margin: 0 0.35em 0 0.1em;
+                border-radius: 3px;
+                overflow: hidden;
                 user-select: none;
-                /* pointer-events: none; */
-            }
-
-            &:last-child::before {
-                content: "";
-            }
-        }
-
-        /* 当行同时高亮时，行号左侧色条的偏移需要配合 */
-        .line.highlighted {
-            margin-left: -3.5em;
-            padding-left: calc(3.5em - 3px);
-            width: calc(100% + 3.5em + 1.5em);
-        }
-    }
-
-    /* CSS 颜色预览色块 */
-    pre.shiki {
-        .shiki-color-preview {
-            display: inline-block;
-            vertical-align: middle;
-            position: relative;
-            width: 0.85em;
-            height: 0.85em;
-            min-width: 11px;
-            min-height: 11px;
-            margin: 0 0.35em 0 0.1em;
-            border-radius: 3px;
-            overflow: hidden;
-            user-select: none;
-            box-sizing: border-box;
-            cursor: pointer;
-            outline: none;
-            box-shadow:
-                inset 0 0 0 1px rgba(0, 0, 0, 0.15),
-                0 1px 2px rgba(0, 0, 0, 0.06);
-            background-image:
-                linear-gradient(45deg, #d1d5db 25%, transparent 25%),
-                linear-gradient(-45deg, #d1d5db 25%, transparent 25%),
-                linear-gradient(45deg, transparent 75%, #d1d5db 75%),
-                linear-gradient(-45deg, transparent 75%, #d1d5db 75%);
-            background-size: 6px 6px;
-            background-position: 0 0, 0 3px, 3px -3px, -3px 0px;
-            background-color: #ffffff;
-            top: -0.06em;
-            transition:
-                transform 0.15s ease,
-                box-shadow 0.15s ease;
-
-            &:hover {
-                transform: scale(1.18);
+                box-sizing: border-box;
+                cursor: pointer;
+                outline: none;
                 box-shadow:
-                    inset 0 0 0 1px rgba(0, 0, 0, 0.25),
-                    0 2px 4px rgba(0, 0, 0, 0.12);
-            }
+                    inset 0 0 0 1px rgba(0, 0, 0, 0.15),
+                    0 1px 2px rgba(0, 0, 0, 0.06);
+                background-image:
+                    linear-gradient(45deg, #d1d5db 25%, transparent 25%),
+                    linear-gradient(-45deg, #d1d5db 25%, transparent 25%),
+                    linear-gradient(45deg, transparent 75%, #d1d5db 75%),
+                    linear-gradient(-45deg, transparent 75%, #d1d5db 75%);
+                background-size: 6px 6px;
+                background-position:
+                    0 0,
+                    0 3px,
+                    3px -3px,
+                    -3px 0px;
+                background-color: #ffffff;
+                top: -0.06em;
+                transition:
+                    transform 0.15s ease,
+                    box-shadow 0.15s ease;
 
-            &:active {
-                transform: scale(0.95);
-            }
+                &:hover {
+                    transform: scale(1.18);
+                    box-shadow:
+                        inset 0 0 0 1px rgba(0, 0, 0, 0.25),
+                        0 2px 4px rgba(0, 0, 0, 0.12);
+                }
 
-            &:focus-visible {
-                box-shadow: 0 0 0 2px var(--md-link-color, #5045de);
-            }
+                &:active {
+                    transform: scale(0.95);
+                }
 
-            /* 复制成功微动效 */
-            &.is-copied {
-                animation: color-preview-copied-bounce 0.35s ease;
+                &:focus-visible {
+                    box-shadow: 0 0 0 2px var(--md-link-color, #5045de);
+                }
 
-                &::after {
-                    content: "✓";
-                    position: absolute;
-                    inset: 0;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    color: #ffffff;
-                    font-size: 9px;
-                    font-weight: 700;
-                    line-height: 1;
-                    text-shadow:
-                        0 0 2px rgba(0, 0, 0, 0.8),
-                        0 0 4px rgba(0, 0, 0, 0.6);
-                    background: rgba(0, 0, 0, 0.35);
+                &.is-copied {
+                    animation: color-preview-copied-bounce 0.35s ease;
+
+                    &::after {
+                        content: "✓";
+                        position: absolute;
+                        inset: 0;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: #ffffff;
+                        font-size: 9px;
+                        font-weight: 700;
+                        line-height: 1;
+                        text-shadow:
+                            0 0 2px rgba(0, 0, 0, 0.8),
+                            0 0 4px rgba(0, 0, 0, 0.6);
+                        background: rgba(0, 0, 0, 0.35);
+                        border-radius: inherit;
+                    }
+                }
+
+                .shiki-color-preview-box {
+                    display: block;
+                    width: 100%;
+                    height: 100%;
                     border-radius: inherit;
                 }
             }
+        }
+    }
 
-            .shiki-color-preview-box {
-                display: block;
-                width: 100%;
-                height: 100%;
-                border-radius: inherit;
-            }
+    /* ===== 图片 figure 容器 ===== */
+    figure.md-figure {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 16px auto;
+        width: max-content;
+        max-width: 100%;
+    }
+
+    figure.md-figure figcaption {
+        text-align: center;
+    }
+
+    .md-figure {
+        margin: 1.5em 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+
+        img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+
+        figcaption {
+            margin-top: 0.5em;
+            font-size: 0.85em;
+            color: var(--md-text-gray-color);
+            line-height: 1.5;
         }
     }
 }
@@ -690,7 +744,7 @@
     }
 }
 
-/* ===== 夜间模式 ===== */
+/* ===== 夜间模式根变量 ===== */
 .is-dark-theme .starmap-markdown-render,
 .starmap-markdown-render.is-dark-theme {
     --md-head-color: rgb(215 225 245);
@@ -700,6 +754,7 @@
 
     --md-code-scroll-bar-thumb-bk: #252942;
     --md-code-scroll-bar-thumb-bk-hover: rgb(44, 49, 74);
+    --md-code-bk-color: #1c2034;
 
     --md-blockquote-text-color: rgb(82 172 145);
     --md-blockquote-border-color: #1c3930;
@@ -723,87 +778,45 @@
     --md-details-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
 }
 
-.is-dark-theme .starmap-markdown-render hr,
-.starmap-markdown-render.is-dark-theme hr {
-    border-bottom-color: rgb(35 38 55);
-}
-
-.is-dark-theme .starmap-markdown-render kbd,
-.starmap-markdown-render.is-dark-theme kbd {
-    text-shadow: none;
-    box-shadow:
-        0 2px 1px rgba(0, 0, 0, 0.45),
-        0 2px 3px rgba(0, 0, 0, 0.2);
-}
-
-/* 夜间模式 - 代码块背景（变量在 .code-warp-box 上定义，需在此层覆盖）*/
-.is-dark-theme .starmap-markdown-render .code-warp-box,
-.starmap-markdown-render.is-dark-theme .code-warp-box {
-    --md-code-bk-color: #1c2034;
-}
-
-/* 夜间模式 - 激活 Shiki 双主题暗色 */
-.is-dark-theme .starmap-markdown-render pre.shiki,
-.starmap-markdown-render.is-dark-theme pre.shiki {
-    background-color: #1c2034 !important;
-    color: var(--shiki-dark) !important;
-}
-
-.is-dark-theme .starmap-markdown-render pre.shiki span,
-.starmap-markdown-render.is-dark-theme pre.shiki span {
-    color: var(--shiki-dark) !important;
-    font-style: var(--shiki-dark-font-style) !important;
-    font-weight: var(--shiki-dark-font-weight) !important;
-    text-decoration: var(--shiki-dark-text-decoration) !important;
-}
-
-/* 夜间模式 - CSS 颜色预览色块微调 */
-.is-dark-theme .starmap-markdown-render .shiki-color-preview,
-.starmap-markdown-render.is-dark-theme .shiki-color-preview {
-    box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.2),
-        0 1px 2px rgba(0, 0, 0, 0.3);
-    background-image:
-        linear-gradient(45deg, #374151 25%, transparent 25%),
-        linear-gradient(-45deg, #374151 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, #374151 75%),
-        linear-gradient(-45deg, transparent 75%, #374151 75%);
-    background-color: #1f2937;
-}
-
-/* 图片 figure 容器 */
-.starmap-markdown-render {
-    figure.md-figure {
-        display: flex;
-        flex-direction: column;
-        align-items: center; /* 水平居中内部的图片和标题 */
-        margin: 16px auto; /* 让 figure 容器自身在 <p> 内部居中 */
-        width: max-content;
-        max-width: 100%;
+/* ===== 夜间模式 @scope 作用域 ===== */
+@scope (.starmap-markdown-render.is-dark-theme, .is-dark-theme .starmap-markdown-render) to (.starmap-isolate) {
+    hr {
+        border-bottom-color: rgb(35 38 55);
     }
 
-    figure.md-figure figcaption {
-        text-align: center; /* 确保多行标题文本也能居中对齐 */
+    kbd {
+        text-shadow: none;
+        box-shadow:
+            0 2px 1px rgba(0, 0, 0, 0.45),
+            0 2px 3px rgba(0, 0, 0, 0.2);
     }
 
-    .md-figure {
-        margin: 1.5em 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
+    /* 代码块背景覆盖 */
+    .code-warp-box {
+        --md-code-bk-color: #1c2034;
+    }
 
-        img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-        }
+    /* 激活 Shiki 双主题暗色 */
+    pre.shiki {
+        background-color: #1c2034 !important;
+        color: var(--shiki-dark) !important;
 
-        figcaption {
-            margin-top: 0.5em;
-            font-size: 0.85em;
-            color: var(--md-text-gray-color);
-            line-height: 1.5;
+        span {
+            color: var(--shiki-dark) !important;
+            font-style: var(--shiki-dark-font-style) !important;
+            font-weight: var(--shiki-dark-font-weight) !important;
+            text-decoration: var(--shiki-dark-text-decoration) !important;
         }
+    }
+
+    /* CSS 颜色预览色块微调 */
+    .shiki-color-preview {
+        box-shadow:
+            inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+            0 1px 2px rgba(0, 0, 0, 0.3);
+        background-image:
+            linear-gradient(45deg, #374151 25%, transparent 25%), linear-gradient(-45deg, #374151 25%, transparent 25%),
+            linear-gradient(45deg, transparent 75%, #374151 75%), linear-gradient(-45deg, transparent 75%, #374151 75%);
+        background-color: #1f2937;
     }
 }
