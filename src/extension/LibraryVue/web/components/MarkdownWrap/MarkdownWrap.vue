@@ -1,5 +1,10 @@
 <template>
-    <div class="Starmap-Markdown-Wrap starmap-markdown-render" :class="{ 'is-toc-pinned': isTocPinned }" @click="handleLinkClick">
+    <div
+        class="Starmap-Markdown-Wrap starmap-markdown-render"
+        :class="{ 'is-toc-pinned': isTocPinned }"
+        @click="handleContainerClick"
+        @keydown="handleContainerKeyDown"
+    >
         <StarmapHeader />
         <slot />
         <Toc @layout-change="handleTocLayoutChange" />
@@ -81,6 +86,56 @@ export default defineComponent({
         },
     },
     methods: {
+        /**
+         * 容器点击事件总代理，拦截颜色预览复制与 SPA 链接跳转
+         */
+        handleContainerClick(e: MouseEvent) {
+            const target = e.target as HTMLElement
+            // 优先拦截 CSS 颜色预览色块点击复制
+            const colorEl = target.closest(".shiki-color-preview") as HTMLElement | null
+            if (colorEl) {
+                e.preventDefault()
+                e.stopPropagation()
+                this.copyColorValue(colorEl)
+                return
+            }
+
+            this.handleLinkClick(e)
+        },
+        /**
+         * 键盘操作支持（回车或空格复制聚焦的颜色色块）
+         */
+        handleContainerKeyDown(e: KeyboardEvent) {
+            if (e.key === "Enter" || e.key === " ") {
+                const target = e.target as HTMLElement
+                const colorEl = target.closest(".shiki-color-preview") as HTMLElement | null
+                if (colorEl) {
+                    e.preventDefault()
+                    this.copyColorValue(colorEl)
+                }
+            }
+        },
+        /**
+         * 复制颜色值到剪贴板并展示状态反馈
+         * @param colorEl 颜色预览 DOM 元素
+         */
+        async copyColorValue(colorEl: HTMLElement) {
+            const color = colorEl.getAttribute("data-color")
+            if (!color) return
+
+            try {
+                await navigator.clipboard.writeText(color)
+                colorEl.classList.add("is-copied")
+                const originalTitle = colorEl.getAttribute("title") || ""
+                colorEl.setAttribute("title", `已复制: ${color}`)
+                setTimeout(() => {
+                    colorEl.classList.remove("is-copied")
+                    colorEl.setAttribute("title", originalTitle)
+                }, 1500)
+            } catch (err) {
+                console.error("[Starmap] 复制颜色失败:", err)
+            }
+        },
         /**
          * 拦截并处理 Markdown 中的 a 标签点击，以在 History 模式下通过 SPA 进行路由导航而防止页面重新加载
          */

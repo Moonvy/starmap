@@ -6,6 +6,8 @@ import * as path from "node:path"
 
 import { getLibraryVueRoot } from "../../../../utils/packagePath"
 
+import { createUnitComponentCode } from "../../lib/createUnitComponentCode"
+
 const MarkdownComponentsPath = path.join(getLibraryVueRoot(), "web/components/MarkdownWrap/index.ts")
 
 /**
@@ -52,7 +54,18 @@ export function extractVModelVariables(html: string): Record<string, string> {
     return variables
 }
 
-export async function outputReadmeVue(codeUnit: CodeUnit, outputPath: string) {
+/**
+ * 输出 CodeUnit 的 readme.vue SFC 文件
+ *
+ * @param codeUnit 代码单元
+ * @param outputPath 输出文件路径
+ * @param unitVueCode 单元组件引入代码（可选，未传入时自动解析）
+ */
+export async function outputReadmeVue(
+    codeUnit: CodeUnit,
+    outputPath: string,
+    unitVueCode?: { importCode: string; componentsCode: string },
+) {
     let readmeMarkdown = await codeUnit.readmeFsNode.readMarkdown()
     let {
         html: readmeHtml,
@@ -62,6 +75,7 @@ export async function outputReadmeVue(codeUnit: CodeUnit, outputPath: string) {
         filePath: codeUnit.readmeFsNode.fileFullPath,
         removeFirstH1: true,
         codeUnits: codeUnit.gen?.allUnits?.flat,
+        outputDir: path.dirname(outputPath),
     })
     codeUnit.readmeImportDependencyPaths = dependencies || []
 
@@ -70,11 +84,16 @@ export async function outputReadmeVue(codeUnit: CodeUnit, outputPath: string) {
         return { name, defaultValue }
     })
 
+    if (!unitVueCode) {
+        unitVueCode = await createUnitComponentCode(codeUnit)
+    }
+
     outputTemplate("readme.vue.hbs", outputPath, {
         codeUnit,
         readmeHtml,
         imports,
         MarkdownComponentsPath,
         vModelVariablesList,
+        unitVueCode,
     })
 }

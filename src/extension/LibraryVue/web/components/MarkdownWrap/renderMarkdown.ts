@@ -6,6 +6,7 @@ import anchor from "markdown-it-anchor"
 import path, { dirname, resolve, isAbsolute, posix } from "path"
 import { markdownCodeHighlight } from "./lib/markdownItCodeHighlight"
 import { markdownCodeImportResolve } from "./lib/markdownImportResolve"
+import { markdownInlineVueResolve } from "./lib/markdownInlineVueResolve"
 import { markdownItImage } from "./lib/markdownItImage"
 import type { CodeUnit } from "../../../../../core/Gen/CodeUnit"
 
@@ -173,16 +174,31 @@ export async function renderMarkdown(
         removeFirstH1?: boolean
         // 所有代码单元，用于处理本地 markdown 链接的跳转
         codeUnits?: CodeUnit[]
+        // 输出目录，用于存放内联 vue @preview 生成的独立组件文件
+        outputDir?: string
     },
 ): Promise<{ html: string; imports?: { name: string; path: string }[]; dependencies?: string[] }> {
-    // 代码导入解析 resolve
+    // 1. 代码导入解析 resolve (@import)
     let {
-        markdown: resolvedMarkdown,
-        imports,
-        dependencies,
+        markdown: importResolvedMarkdown,
+        imports: codeImports = [],
+        dependencies: codeDeps = [],
     } = await markdownCodeImportResolve(markdown, {
         filePath: options?.filePath,
     })
+
+    // 2. 内联 Vue @preview 代码块解析，提取为独立的 .vue 组件文件
+    let {
+        markdown: resolvedMarkdown,
+        imports: inlineImports = [],
+        dependencies: inlineDeps = [],
+    } = await markdownInlineVueResolve(importResolvedMarkdown, {
+        filePath: options?.filePath,
+        outputDir: options?.outputDir,
+    })
+
+    const imports = [...(codeImports || []), ...inlineImports]
+    let dependencies = [...(codeDeps || []), ...inlineDeps]
 
     let html = ""
     try {

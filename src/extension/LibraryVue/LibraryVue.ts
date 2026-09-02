@@ -252,11 +252,11 @@ async function generateCodeUnit(
         const unitVuePath = path.join(unitPath, "unit.vue")
 
         // readme 渲染、组件解析、vue-docgen 彼此无依赖，可并行
-        const [, unitVueCode] = await Promise.all([
-            outputReadmeVue(codeUnit, readmeVuePath),
+        const [unitVueCode] = await Promise.all([
             createUnitComponentCode(codeUnit),
             outputVueMetadataIfNeeded(codeUnit, unitPath, core),
         ])
+        await outputReadmeVue(codeUnit, readmeVuePath, unitVueCode)
 
         outputTemplate("unit.metadata.ts.hbs", metadataTsPath, {
             mainComponentFsNode: !!codeUnit.mainComponentFsNode,

@@ -3,6 +3,8 @@ import { createHash } from "node:crypto"
 
 import { transformerNotationDiff } from "@shikijs/transformers"
 
+import { createColorPreviewTransformer, isCssLanguage } from "./colorPreviewTransformer"
+
 /** 相同代码块高亮结果缓存，跨 CodeUnit 复用，显著减少重复 shiki 开销 */
 const highlightResultCache = new Map<string, string>()
 /** 缓存上限，防止长时间 watch 下无限增长 */
@@ -136,6 +138,7 @@ export async function markdownCodeHighlight(str: string, lang: string, attrs: st
                 transformerNotationDiff({
                     matchAlgorithm: "v3",
                 }),
+                ...(isCssLanguage(lang) || isCssLanguage(rawLang) ? [createColorPreviewTransformer()] : []),
             ],
         })
     } catch (err: any) {
